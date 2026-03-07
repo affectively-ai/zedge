@@ -64,25 +64,57 @@ You should see:
 
 Open Zed settings (`Cmd+,` on macOS, `Ctrl+,` on Linux) and add:
 
-```json
+```jsonc
 {
   "language_models": {
     "openai_compatible": {
       "Zedge": {
         "api_url": "http://localhost:7331/v1",
         "available_models": [
-          { "name": "tinyllama-1.1b", "display_name": "TinyLlama 1.1B (Fast)", "max_tokens": 2048 },
-          { "name": "qwen-2.5-coder-7b", "display_name": "Qwen 2.5 Coder 7B", "max_tokens": 4096 },
-          { "name": "mistral-7b", "display_name": "Mistral 7B", "max_tokens": 4096 },
-          { "name": "gemma3-4b-it", "display_name": "Gemma3 4B IT", "max_tokens": 4096 },
-          { "name": "gemma3-1b-it", "display_name": "Gemma3 1B IT", "max_tokens": 2048 },
-          { "name": "glm-4-9b", "display_name": "GLM-4 9B", "max_tokens": 4096 },
-          { "name": "deepseek-r1", "display_name": "DeepSeek R1", "max_tokens": 4096 },
-          { "name": "lfm2.5-1.2b-glm-4.7-flash-thinking", "display_name": "LFM 2.5 1.2B (Thinking)", "max_tokens": 2048 }
-        ]
-      }
-    }
-  }
+          {
+            "name": "tinyllama-1.1b",
+            "display_name": "TinyLlama 1.1B (Fast)",
+            "max_tokens": 2048,
+          },
+          {
+            "name": "qwen-2.5-coder-7b",
+            "display_name": "Qwen 2.5 Coder 7B",
+            "max_tokens": 4096,
+          },
+          {
+            "name": "mistral-7b",
+            "display_name": "Mistral 7B",
+            "max_tokens": 4096,
+          },
+          {
+            "name": "gemma3-4b-it",
+            "display_name": "Gemma3 4B IT",
+            "max_tokens": 4096,
+          },
+          {
+            "name": "gemma3-1b-it",
+            "display_name": "Gemma3 1B IT",
+            "max_tokens": 2048,
+          },
+          {
+            "name": "glm-4-9b",
+            "display_name": "GLM-4 9B",
+            "max_tokens": 4096,
+          },
+          {
+            "name": "deepseek-r1",
+            "display_name": "DeepSeek R1",
+            "max_tokens": 4096,
+          },
+          {
+            "name": "lfm2.5-1.2b-glm-4.7-flash-thinking",
+            "display_name": "LFM 2.5 1.2B (Thinking)",
+            "max_tokens": 2048,
+          },
+        ],
+      },
+    },
+  },
 }
 ```
 
