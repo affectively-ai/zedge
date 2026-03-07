@@ -55,6 +55,8 @@ import type { CollabBridge, CollabPresenceUpdate } from './collab-bridge';
 import type { KernelBridge } from './kernel-bridge';
 import type { CapacitorBridge, ProjectionType, CodeBlock } from './capacitor-bridge';
 import type { CrdtBridge } from './crdt-bridge';
+import type { UcanBridge, AgentMode } from './ucan-bridge';
+import type { UcanCapability } from '@affectively/auth';
 import { getMarketStatus } from './compute-node';
 
 // --- Request body types ---
@@ -141,6 +143,7 @@ let collabBridge: CollabBridge | null = null;
 let kernelBridge: KernelBridge | null = null;
 let capacitorBridge: CapacitorBridge | null = null;
 let crdtBridge: CrdtBridge | null = null;
+let ucanBridge: UcanBridge | null = null;
 
 export function setForgeBridge(bridge: ForgeBridge): void {
   forgeBridge = bridge;
@@ -164,6 +167,10 @@ export function setCapacitorBridge(bridge: CapacitorBridge): void {
 
 export function setCrdtBridge(bridge: CrdtBridge): void {
   crdtBridge = bridge;
+}
+
+export function setUcanBridge(bridge: UcanBridge): void {
+  ucanBridge = bridge;
 }
 
 // --- Request Handler ---
@@ -209,8 +216,8 @@ async function handleRequest(req: Request): Promise<Response> {
         wasmLocal: true,
       },
       ghostwriter: {
-        initialized: crdtBridge !== null,
-        status: crdtBridge?.getStatus() ?? null,
+        crdt: crdtBridge?.getStatus() ?? null,
+        ucan: ucanBridge?.getStatus() ?? null,
       },
     });
   }
@@ -983,6 +990,112 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse({ redone: true });
   }
 
+  // ==================== UCAN Auth (Ghostwriter Phase 2) ====================
+
+  if (path === '/ucan/status' && req.method === 'GET') {
+    if (!ucanBridge) return jsonResponse({ error: 'UCAN bridge not initialized' }, 503);
+    return jsonResponse(ucanBridge.getStatus());
+  }
+
+  if (path === '/ucan/did' && req.method === 'GET') {
+    if (!ucanBridge) return jsonResponse({ error: 'UCAN bridge not initialized' }, 503);
+    return jsonResponse({ did: ucanBridge.getDid(), publicKey: ucanBridge.getPublicKeyJwk() });
+  }
+
+  if (path === '/ucan/issue' && req.method === 'POST') {
+    if (!ucanBridge) return jsonResponse({ error: 'UCAN bridge not initialized' }, 503);
+    const body = (await req.json()) as {
+      audienceDid?: string;
+      capabilities?: UcanCapability[];
+      expirationSeconds?: number;
+    };
+    if (!body.audienceDid || !body.capabilities?.length) {
+      return jsonResponse({ error: 'audienceDid and capabilities are required' }, 400);
+    }
+    const token = await ucanBridge.issueToken(
+      body.audienceDid, body.capabilities, body.expirationSeconds,
+    );
+    return jsonResponse({ token: token.token, expiresAt: token.payload.exp * 1000 });
+  }
+
+  if (path === '/ucan/agent' && req.method === 'POST') {
+    if (!ucanBridge) return jsonResponse({ error: 'UCAN bridge not initialized' }, 503);
+    const body = (await req.json()) as {
+      agentDid?: string; mode?: AgentMode; expirationSeconds?: number;
+    };
+    if (!body.agentDid || !body.mode) {
+      return jsonResponse({ error: 'agentDid and mode are required' }, 400);
+    }
+    if (!['review', 'pair', 'autonomous'].includes(body.mode)) {
+      return jsonResponse({ error: 'mode must be review, pair, or autonomous' }, 400);
+    }
+    const result = await ucanBridge.issueAgentToken(
+      body.agentDid, body.mode, body.expirationSeconds,
+    );
+    return jsonResponse({
+      token: result.token, mode: result.mode,
+      capabilities: result.payload.att, expiresAt: result.payload.exp * 1000,
+    });
+  }
+
+  if (path === '/ucan/invite' && req.method === 'POST') {
+    if (!ucanBridge) return jsonResponse({ error: 'UCAN bridge not initialized' }, 503);
+    const body = (await req.json()) as {
+      audienceDid?: string; path?: string; dirPath?: string;
+      access?: 'read' | 'write' | 'read_write'; expirationSeconds?: number;
+      label?: string; open?: boolean;
+    };
+    const invite = body.open
+      ? await ucanBridge.createOpenInvite({
+          path: body.path, dirPath: body.dirPath,
+          access: body.access, expirationSeconds: body.expirationSeconds,
+        })
+      : await ucanBridge.createInvite(body.audienceDid ?? 'did:key:*', {
+          path: body.path, dirPath: body.dirPath,
+          access: body.access, expirationSeconds: body.expirationSeconds,
+          label: body.label,
+        });
+    return jsonResponse(invite);
+  }
+
+  if (path === '/ucan/verify' && req.method === 'POST') {
+    if (!ucanBridge) return jsonResponse({ error: 'UCAN bridge not initialized' }, 503);
+    const body = (await req.json()) as {
+      token?: string; requiredCapabilities?: UcanCapability[];
+    };
+    if (!body.token) return jsonResponse({ error: 'token is required' }, 400);
+    const result = await ucanBridge.verifyToken(body.token, body.requiredCapabilities);
+    return jsonResponse(result);
+  }
+
+  if (path === '/ucan/grants' && req.method === 'GET') {
+    if (!ucanBridge) return jsonResponse({ error: 'UCAN bridge not initialized' }, 503);
+    return jsonResponse(ucanBridge.listGrants());
+  }
+
+  if (path.startsWith('/ucan/revoke/') && req.method === 'POST') {
+    if (!ucanBridge) return jsonResponse({ error: 'UCAN bridge not initialized' }, 503);
+    const grantId = path.slice('/ucan/revoke/'.length);
+    const revoked = ucanBridge.revokeGrant(grantId);
+    return jsonResponse({ revoked, grantId });
+  }
+
+  if (path === '/ucan/revoke-audience' && req.method === 'POST') {
+    if (!ucanBridge) return jsonResponse({ error: 'UCAN bridge not initialized' }, 503);
+    const body = (await req.json()) as { audienceDid?: string };
+    if (!body.audienceDid) return jsonResponse({ error: 'audienceDid is required' }, 400);
+    const count = ucanBridge.revokeAudience(body.audienceDid);
+    return jsonResponse({ revoked: count, audienceDid: body.audienceDid });
+  }
+
+  if (path === '/ucan/revoke-mode' && req.method === 'POST') {
+    if (!ucanBridge) return jsonResponse({ error: 'UCAN bridge not initialized' }, 503);
+    const body = (await req.json()) as { mode?: AgentMode };
+    if (!body.mode) return jsonResponse({ error: 'mode is required' }, 400);
+    const count = ucanBridge.revokeMode(body.mode);
+    return jsonResponse({ revoked: count, mode: body.mode });
+  }
+
   return jsonResponse({ error: 'Not found' }, 404);
 }
 
@@ -1002,4 +1115,5 @@ export function startServer(): void {
   console.log(`[zedge] Forge: http://localhost:${port}/forge/status`);
   console.log(`[zedge] Health: http://localhost:${port}/health`);
   console.log(`[zedge] Ghostwriter CRDT: http://localhost:${port}/crdt/status`);
+  console.log(`[zedge] Ghostwriter UCAN: http://localhost:${port}/ucan/status`);
 }

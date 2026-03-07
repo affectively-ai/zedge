@@ -16,6 +16,7 @@ import {
   setKernelBridge,
   setCapacitorBridge,
   setCrdtBridge,
+  setUcanBridge,
 } from './server';
 import { joinPool, getPoolStatus } from './compute-node';
 import { startMesh, getMeshStatus } from './p2p-mesh';
@@ -28,6 +29,7 @@ import { CollabBridge } from './collab-bridge';
 import { KernelBridge } from './kernel-bridge';
 import { CapacitorBridge } from './capacitor-bridge';
 import { CrdtBridge } from './crdt-bridge';
+import { UcanBridge } from './ucan-bridge';
 
 async function main(): Promise<void> {
   console.log('[zedge] Starting companion sidecar v2.0...');
@@ -137,6 +139,22 @@ async function main(): Promise<void> {
     );
   } catch (err) {
     console.log(`[zedge] Ghostwriter CRDT bridge offline (${String(err)}). Local-only mode.`);
+  }
+
+  // Initialize UcanBridge (Ghostwriter Phase 2)
+  const ucanSecret = config.dashRelayApiKey ?? `zedge-local-${meshNodeId}`;
+  const ucan = new UcanBridge({
+    secret: ucanSecret,
+    workspaceId: crdtConfig.workspaceId,
+    peerId: meshNodeId,
+    displayName,
+  });
+  try {
+    await ucan.init();
+    setUcanBridge(ucan);
+    console.log(`[zedge] UCAN bridge initialized (DID: ${ucan.getDid().slice(0, 24)}...)`);
+  } catch (err) {
+    console.log(`[zedge] UCAN bridge failed to initialize (${String(err)})`);
   }
 
   // Report initial status
