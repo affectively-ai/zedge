@@ -6,12 +6,12 @@
  * and emotion tag flows through Yjs CRDTs — zero merge conflicts, offline support,
  * automatic convergence.
  *
- * Room naming convention:
- *   zedge:{workspaceId}:{relativePath}     — per-file Y.Doc
- *   zedge:{workspaceId}:__presence         — workspace-wide cursors
- *   zedge:{workspaceId}:__capacitor        — shared reading metrics + amygdala tags
- *   zedge:{workspaceId}:__forge            — deploy state
- *   zedge:{workspaceId}:__pool             — compute pool reputation ledger
+ * Room naming convention (aeon.kernel namespace):
+ *   aeon.kernel.zedge.{workspaceId}.file.{path}  — per-file Y.Doc
+ *   aeon.kernel.zedge.{workspaceId}.presence      — workspace-wide cursors
+ *   aeon.kernel.zedge.{workspaceId}.capacitor     — shared reading metrics + amygdala tags
+ *   aeon.kernel.zedge.{workspaceId}.forge         — deploy state
+ *   aeon.kernel.zedge.{workspaceId}.pool          — compute pool reputation ledger
  */
 
 import { DashRelay } from '@dashrelay/client';
@@ -160,7 +160,7 @@ export class CrdtBridge {
   async connect(): Promise<void> {
     // Presence room — workspace-wide cursor tracking
     this.presenceDoc = new Y.Doc();
-    this.presenceRelay = this.createRelay('__presence');
+    this.presenceRelay = this.createRelay('presence');
     await this.presenceRelay.connect(this.presenceDoc);
 
     // Register self in presence
@@ -177,7 +177,7 @@ export class CrdtBridge {
 
     // Capacitor room — shared reading metrics and emotion tags
     this.capacitorDoc = new Y.Doc();
-    this.capacitorRelay = this.createRelay('__capacitor');
+    this.capacitorRelay = this.createRelay('capacitor');
     await this.capacitorRelay.connect(this.capacitorDoc);
 
     // Listen for peer events on presence relay
@@ -237,7 +237,7 @@ export class CrdtBridge {
     if (existing) return existing;
 
     const doc = new Y.Doc();
-    const relay = this.createRelay(path);
+    const relay = this.createRelay('file.' + path);
     await relay.connect(doc);
 
     const content = doc.getText('content');
@@ -647,8 +647,10 @@ export class CrdtBridge {
   // -------------------------------------------------------------------------
 
   private createRelay(roomSuffix: string): DashRelay {
+    const normalizedWs = this.config.workspaceId.replace(/[^a-zA-Z0-9._:-]/g, '_');
+    const normalizedSuffix = roomSuffix.replace(/[^a-zA-Z0-9._:-]/g, '_');
     return new DashRelay({
-      roomName: `zedge:${this.config.workspaceId}:${roomSuffix}`,
+      roomName: `aeon.kernel.zedge.${normalizedWs}.${normalizedSuffix}`,
       url: this.config.relayUrl,
       ucan: this.config.ucan,
       apiKey: this.config.apiKey,
