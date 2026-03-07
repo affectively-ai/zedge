@@ -127,6 +127,17 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
+function deprecatedJsonResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'X-Deprecated': 'Use /crdt/* endpoints instead',
+    },
+  });
+}
+
 function corsHeaders(): Response {
   return new Response(null, {
     status: 204,
@@ -640,47 +651,47 @@ async function handleRequest(req: Request): Promise<Response> {
   // ==================== Collaborative Editing (Phase 3) ====================
 
   if (path === '/collab/session' && req.method === 'POST') {
-    if (!collabBridge) return jsonResponse({ error: 'Collab bridge not initialized' }, 503);
+    if (!collabBridge) return deprecatedJsonResponse({ error: 'Collab bridge not initialized' }, 503);
     const body = (await req.json()) as { filePath?: string; name?: string };
-    if (!body.filePath) return jsonResponse({ error: 'filePath is required' }, 400);
+    if (!body.filePath) return deprecatedJsonResponse({ error: 'filePath is required' }, 400);
     const session = collabBridge.createSession(body.filePath, body.name);
-    return jsonResponse({
+    return deprecatedJsonResponse({
       id: session.id, name: session.name, hostPeerId: session.hostPeerId,
       filePath: session.filePath, participants: Array.from(session.participants.values()),
     });
   }
 
   if (path.startsWith('/collab/join/') && req.method === 'POST') {
-    if (!collabBridge) return jsonResponse({ error: 'Collab bridge not initialized' }, 503);
+    if (!collabBridge) return deprecatedJsonResponse({ error: 'Collab bridge not initialized' }, 503);
     const sessionId = path.slice('/collab/join/'.length);
     const body = (await req.json()) as { peerId?: string; displayName?: string };
     if (!body.peerId || !body.displayName) {
-      return jsonResponse({ error: 'peerId and displayName are required' }, 400);
+      return deprecatedJsonResponse({ error: 'peerId and displayName are required' }, 400);
     }
     const participant = collabBridge.joinSession(sessionId, body.peerId, body.displayName);
-    if (!participant) return jsonResponse({ error: 'Session not found' }, 404);
-    return jsonResponse(participant);
+    if (!participant) return deprecatedJsonResponse({ error: 'Session not found' }, 404);
+    return deprecatedJsonResponse(participant);
   }
 
   if (path === '/collab/presence' && req.method === 'POST') {
-    if (!collabBridge) return jsonResponse({ error: 'Collab bridge not initialized' }, 503);
+    if (!collabBridge) return deprecatedJsonResponse({ error: 'Collab bridge not initialized' }, 503);
     const body = (await req.json()) as CollabPresenceUpdate;
     collabBridge.updatePresence(body);
-    return jsonResponse({ updated: true });
+    return deprecatedJsonResponse({ updated: true });
   }
 
   if (path === '/collab/sessions' && req.method === 'GET') {
-    if (!collabBridge) return jsonResponse({ error: 'Collab bridge not initialized' }, 503);
-    return jsonResponse(collabBridge.listSessions().map((s) => ({
+    if (!collabBridge) return deprecatedJsonResponse({ error: 'Collab bridge not initialized' }, 503);
+    return deprecatedJsonResponse(collabBridge.listSessions().map((s) => ({
       id: s.id, name: s.name, filePath: s.filePath,
       participantCount: s.participants.size, lastActivity: s.lastActivity,
     })));
   }
 
   if (path.startsWith('/collab/participants/') && req.method === 'GET') {
-    if (!collabBridge) return jsonResponse({ error: 'Collab bridge not initialized' }, 503);
+    if (!collabBridge) return deprecatedJsonResponse({ error: 'Collab bridge not initialized' }, 503);
     const sessionId = path.slice('/collab/participants/'.length);
-    return jsonResponse(collabBridge.getParticipants(sessionId));
+    return deprecatedJsonResponse(collabBridge.getParticipants(sessionId));
   }
 
   // ==================== Kernel (Phase 4) ====================
@@ -739,56 +750,56 @@ async function handleRequest(req: Request): Promise<Response> {
   // ==================== Capacitor (Phase 5) ====================
 
   if (path === '/capacitor/mount' && req.method === 'POST') {
-    if (!capacitorBridge) return jsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
+    if (!capacitorBridge) return deprecatedJsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
     const body = (await req.json()) as { path?: string; projection?: ProjectionType };
-    if (!body.path) return jsonResponse({ error: 'path is required' }, 400);
+    if (!body.path) return deprecatedJsonResponse({ error: 'path is required' }, 400);
     const mount = capacitorBridge.mount(body.path, body.projection);
-    return jsonResponse({ id: mount.id, path: mount.path, projection: mount.projection });
+    return deprecatedJsonResponse({ id: mount.id, path: mount.path, projection: mount.projection });
   }
 
   if (path.startsWith('/capacitor/layout/') && req.method === 'GET') {
-    if (!capacitorBridge) return jsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
+    if (!capacitorBridge) return deprecatedJsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
     const mountId = path.slice('/capacitor/layout/'.length);
-    return jsonResponse(capacitorBridge.getLayout(mountId));
+    return deprecatedJsonResponse(capacitorBridge.getLayout(mountId));
   }
 
   if (path === '/capacitor/personalize' && req.method === 'POST') {
-    if (!capacitorBridge) return jsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
+    if (!capacitorBridge) return deprecatedJsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
     const body = (await req.json()) as { developerId?: string; preferences?: Record<string, unknown>; recentFiles?: string[]; focusArea?: string };
-    if (!body.developerId) return jsonResponse({ error: 'developerId is required' }, 400);
+    if (!body.developerId) return deprecatedJsonResponse({ error: 'developerId is required' }, 400);
     capacitorBridge.personalize({
       developerId: body.developerId,
       preferences: body.preferences ?? {},
       recentFiles: body.recentFiles ?? [],
       focusArea: body.focusArea,
     });
-    return jsonResponse({ personalized: true });
+    return deprecatedJsonResponse({ personalized: true });
   }
 
   if (path.startsWith('/capacitor/graph/') && req.method === 'GET') {
-    if (!capacitorBridge) return jsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
+    if (!capacitorBridge) return deprecatedJsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
     const mountId = path.slice('/capacitor/graph/'.length);
-    return jsonResponse(capacitorBridge.getClusters(mountId));
+    return deprecatedJsonResponse(capacitorBridge.getClusters(mountId));
   }
 
   if (path === '/capacitor/project' && req.method === 'POST') {
-    if (!capacitorBridge) return jsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
+    if (!capacitorBridge) return deprecatedJsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
     const body = (await req.json()) as { mountId?: string; projection?: ProjectionType };
     if (!body.mountId || !body.projection) {
-      return jsonResponse({ error: 'mountId and projection are required' }, 400);
+      return deprecatedJsonResponse({ error: 'mountId and projection are required' }, 400);
     }
     capacitorBridge.setProjection(body.mountId, body.projection);
-    return jsonResponse({ projection: body.projection });
+    return deprecatedJsonResponse({ projection: body.projection });
   }
 
   if (path === '/capacitor/index' && req.method === 'POST') {
-    if (!capacitorBridge) return jsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
+    if (!capacitorBridge) return deprecatedJsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
     const body = (await req.json()) as { mountId?: string; block?: CodeBlock };
     if (!body.mountId || !body.block) {
-      return jsonResponse({ error: 'mountId and block are required' }, 400);
+      return deprecatedJsonResponse({ error: 'mountId and block are required' }, 400);
     }
     capacitorBridge.indexBlock(body.mountId, body.block);
-    return jsonResponse({ indexed: true, blockId: body.block.id });
+    return deprecatedJsonResponse({ indexed: true, blockId: body.block.id });
   }
 
   // ==================== Superinference 2.0 (Phase 6) ====================
@@ -985,6 +996,39 @@ async function handleRequest(req: Request): Promise<Response> {
     if (!body.path) return jsonResponse({ error: 'path is required' }, 400);
     crdtBridge.undo(body.path);
     return jsonResponse({ undone: true });
+  }
+
+  if (path === '/crdt/snapshot' && req.method === 'GET') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const filePath = url.searchParams.get('path');
+    if (!filePath) return jsonResponse({ error: 'path query param is required' }, 400);
+    const snapshot = crdtBridge.getSnapshot(filePath);
+    if (!snapshot) return jsonResponse({ error: 'File not open' }, 404);
+    return jsonResponse({ path: filePath, snapshot: Array.from(snapshot) });
+  }
+
+  if (path === '/crdt/state-vector' && req.method === 'GET') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const filePath = url.searchParams.get('path');
+    if (!filePath) return jsonResponse({ error: 'path query param is required' }, 400);
+    const stateVector = crdtBridge.getStateVector(filePath);
+    if (!stateVector) return jsonResponse({ error: 'File not open' }, 404);
+    return jsonResponse({ path: filePath, stateVector: Array.from(stateVector) });
+  }
+
+  if (path === '/crdt/ledger' && req.method === 'GET') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    return jsonResponse(crdtBridge.getReputationLedger());
+  }
+
+  if (path === '/crdt/contribute' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as { peerId?: string; tokens?: number; requests?: number };
+    if (!body.peerId || body.tokens === undefined || body.requests === undefined) {
+      return jsonResponse({ error: 'peerId, tokens, and requests are required' }, 400);
+    }
+    crdtBridge.recordContribution(body.peerId, body.tokens, body.requests);
+    return jsonResponse({ recorded: true });
   }
 
   if (path === '/crdt/redo' && req.method === 'POST') {

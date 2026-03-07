@@ -606,6 +606,7 @@ describe('CrdtBridge', () => {
       expect(status.openFiles).toEqual([]);
       expect(status.presenceConnected).toBe(false);
       expect(status.capacitorConnected).toBe(false);
+      expect(status.poolConnected).toBe(false);
       expect(status.peerCount).toBe(0);
     });
 
@@ -617,6 +618,7 @@ describe('CrdtBridge', () => {
       const status = bridge.getStatus();
       expect(status.presenceConnected).toBe(true);
       expect(status.capacitorConnected).toBe(true);
+      expect(status.poolConnected).toBe(true);
       expect(status.openFiles.length).toBe(2);
       expect(status.peerCount).toBe(1);
     });

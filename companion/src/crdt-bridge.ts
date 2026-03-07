@@ -122,6 +122,7 @@ export interface CrdtBridgeStatus {
   openFiles: string[];
   presenceConnected: boolean;
   capacitorConnected: boolean;
+  poolConnected: boolean;
   peerCount: number;
 }
 
@@ -143,6 +144,8 @@ export class CrdtBridge {
   private presenceDoc: Y.Doc | null = null;
   private capacitorRelay: DashRelay | null = null;
   private capacitorDoc: Y.Doc | null = null;
+  private poolRelay: DashRelay | null = null;
+  private poolDoc: Y.Doc | null = null;
   private colorIndex = 0;
   private peerListeners: Array<(event: string, ...args: unknown[]) => void> = [];
 
@@ -179,6 +182,11 @@ export class CrdtBridge {
     this.capacitorDoc = new Y.Doc();
     this.capacitorRelay = this.createRelay('capacitor');
     await this.capacitorRelay.connect(this.capacitorDoc);
+
+    // Pool room — compute contributions reputation ledger
+    this.poolDoc = new Y.Doc();
+    this.poolRelay = this.createRelay('pool');
+    await this.poolRelay.connect(this.poolDoc);
 
     // Listen for peer events on presence relay
     this.presenceRelay.on('peerJoined', (peerId: string) => {
@@ -222,6 +230,11 @@ export class CrdtBridge {
     this.capacitorRelay = null;
     this.capacitorDoc?.destroy();
     this.capacitorDoc = null;
+
+    this.poolRelay?.disconnect();
+    this.poolRelay = null;
+    this.poolDoc?.destroy();
+    this.poolDoc = null;
   }
 
   // -------------------------------------------------------------------------
@@ -624,6 +637,58 @@ export class CrdtBridge {
   }
 
   // -------------------------------------------------------------------------
+  // Compute Pool Reputation Ledger (Phase 7)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Record a compute contribution (tokens served, requests handled).
+   */
+  recordContribution(peerId: string, tokens: number, requests: number): void {
+    if (!this.poolDoc) return;
+    const ledger = this.poolDoc.getMap<{ peerId: string; tokens: number; requests: number; lastContribution: number }>('contributions');
+    const existing = ledger.get(peerId);
+    ledger.set(peerId, {
+      peerId,
+      tokens: (existing?.tokens ?? 0) + tokens,
+      requests: (existing?.requests ?? 0) + requests,
+      lastContribution: Date.now(),
+    });
+  }
+
+  /**
+   * Get the full reputation ledger.
+   */
+  getReputationLedger(): Array<{ peerId: string; tokens: number; requests: number; lastContribution: number }> {
+    if (!this.poolDoc) return [];
+    const ledger = this.poolDoc.getMap<{ peerId: string; tokens: number; requests: number; lastContribution: number }>('contributions');
+    const results: Array<{ peerId: string; tokens: number; requests: number; lastContribution: number }> = [];
+    ledger.forEach((entry) => results.push(entry));
+    return results;
+  }
+
+  // -------------------------------------------------------------------------
+  // Time Travel (Phase 8)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Get a snapshot of the current file state.
+   */
+  getSnapshot(path: string): Uint8Array | null {
+    const handle = this.files.get(path);
+    if (!handle) return null;
+    return Y.encodeStateAsUpdate(handle.doc);
+  }
+
+  /**
+   * Get the state vector for a file.
+   */
+  getStateVector(path: string): Uint8Array | null {
+    const handle = this.files.get(path);
+    if (!handle) return null;
+    return Y.encodeStateVector(handle.doc);
+  }
+
+  // -------------------------------------------------------------------------
   // Status
   // -------------------------------------------------------------------------
 
@@ -638,6 +703,7 @@ export class CrdtBridge {
       openFiles: this.getOpenFiles(),
       presenceConnected: this.presenceRelay !== null,
       capacitorConnected: this.capacitorRelay !== null,
+      poolConnected: this.poolRelay !== null,
       peerCount: participants.length,
     };
   }
