@@ -10,9 +10,10 @@
  *                    AES-256-GCM                            AES-256-GCM
  */
 
-import { createHash, createHmac, randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { sha256, hmacSha256, encryptAes256Gcm, decryptAes256Gcm } from './crypto-utils';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -62,45 +63,6 @@ export interface VfsBlobResponse {
   hash: string;
   content: Uint8Array;
   hmac: string;
-}
-
-// ---------------------------------------------------------------------------
-// Crypto utilities
-// ---------------------------------------------------------------------------
-
-function sha256(data: Uint8Array | string): string {
-  return createHash('sha256').update(data).digest('hex');
-}
-
-function hmacSha256(key: Uint8Array, data: Uint8Array): string {
-  return createHmac('sha256', key).update(data).digest('hex');
-}
-
-function encryptAes256Gcm(
-  key: Uint8Array,
-  plaintext: Uint8Array
-): { ciphertext: Uint8Array; iv: Uint8Array; authTag: Uint8Array } {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', key, iv);
-  const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const authTag = cipher.getAuthTag();
-  return {
-    ciphertext: new Uint8Array(encrypted),
-    iv: new Uint8Array(iv),
-    authTag: new Uint8Array(authTag),
-  };
-}
-
-function decryptAes256Gcm(
-  key: Uint8Array,
-  ciphertext: Uint8Array,
-  iv: Uint8Array,
-  authTag: Uint8Array
-): Uint8Array {
-  const decipher = createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(authTag);
-  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-  return new Uint8Array(decrypted);
 }
 
 // ---------------------------------------------------------------------------
