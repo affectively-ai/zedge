@@ -55,6 +55,8 @@ import type { CollabBridge, CollabPresenceUpdate } from './collab-bridge';
 import type { KernelBridge } from './kernel-bridge';
 import type { CapacitorBridge, ProjectionType, CodeBlock } from './capacitor-bridge';
 import type { CrdtBridge } from './crdt-bridge';
+import { generateInvite, parseRoomUcan, isRoomUcanExpired } from './ucan-scope';
+import type { ZedgeAccessMode } from './ucan-scope';
 import type { UcanBridge, AgentMode } from './ucan-bridge';
 import type { UcanCapability } from '@affectively/auth';
 import { AgentParticipant } from './agent-participant';
@@ -991,6 +993,28 @@ async function handleRequest(req: Request): Promise<Response> {
     if (!body.path) return jsonResponse({ error: 'path is required' }, 400);
     crdtBridge.redo(body.path);
     return jsonResponse({ redone: true });
+  }
+
+  // ==================== UCAN Invite/Join (Ghostwriter Phase 2) ====================
+
+  if (path === '/crdt/invite' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as { room?: string; mode?: string; ttlMs?: number };
+    if (!body.room) return jsonResponse({ error: 'room is required' }, 400);
+    const mode = (body.mode ?? 'reviewMode') as ZedgeAccessMode;
+    const status = crdtBridge.getStatus();
+    const invite = generateInvite(status.peerId, body.room, mode, body.ttlMs);
+    return jsonResponse(invite);
+  }
+
+  if (path === '/crdt/join' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as { token?: string };
+    if (!body.token) return jsonResponse({ error: 'token is required' }, 400);
+    const payload = parseRoomUcan(body.token);
+    if (!payload) return jsonResponse({ error: 'Invalid token' }, 400);
+    if (isRoomUcanExpired(body.token)) return jsonResponse({ error: 'Token expired' }, 401);
+    return jsonResponse({ joined: true, room: payload.room, capabilities: payload.capabilities });
   }
 
   // ==================== Agent Participant (Ghostwriter Phase 3) ====================
