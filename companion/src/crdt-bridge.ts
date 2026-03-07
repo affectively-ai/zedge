@@ -394,7 +394,7 @@ export class CrdtBridge {
     });
 
     // Remove in reverse order to preserve indices
-    handle.diagnostics.doc?.transact(() => {
+    handle.doc.transact(() => {
       for (let i = toRemove.length - 1; i >= 0; i--) {
         handle.diagnostics.delete(toRemove[i]!, 1);
       }
