@@ -54,6 +54,7 @@ import type { VfsBridge } from './vfs-bridge';
 import type { CollabBridge, CollabPresenceUpdate } from './collab-bridge';
 import type { KernelBridge } from './kernel-bridge';
 import type { CapacitorBridge, ProjectionType, CodeBlock } from './capacitor-bridge';
+import type { CrdtBridge } from './crdt-bridge';
 import { getMarketStatus } from './compute-node';
 
 // --- Request body types ---
@@ -139,6 +140,7 @@ let vfsBridge: VfsBridge | null = null;
 let collabBridge: CollabBridge | null = null;
 let kernelBridge: KernelBridge | null = null;
 let capacitorBridge: CapacitorBridge | null = null;
+let crdtBridge: CrdtBridge | null = null;
 
 export function setForgeBridge(bridge: ForgeBridge): void {
   forgeBridge = bridge;
@@ -160,6 +162,10 @@ export function setCapacitorBridge(bridge: CapacitorBridge): void {
   capacitorBridge = bridge;
 }
 
+export function setCrdtBridge(bridge: CrdtBridge): void {
+  crdtBridge = bridge;
+}
+
 // --- Request Handler ---
 
 async function handleRequest(req: Request): Promise<Response> {
@@ -179,7 +185,7 @@ async function handleRequest(req: Request): Promise<Response> {
     const mesh = getMeshStatus();
     return jsonResponse({
       status: 'ok',
-      version: '1.0.0',
+      version: '2.0.0',
       port: config.port,
       preferredModel: config.preferredModel,
       computePool: {
@@ -201,6 +207,10 @@ async function handleRequest(req: Request): Promise<Response> {
         edgeAvailable: true,
         cloudRunDirect: config.cloudRunDirect,
         wasmLocal: true,
+      },
+      ghostwriter: {
+        initialized: crdtBridge !== null,
+        status: crdtBridge?.getStatus() ?? null,
       },
     });
   }
@@ -811,6 +821,168 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse(getMarketStatus());
   }
 
+  // ==================== Ghostwriter CRDT (Zedge 3.0) ====================
+
+  if (path === '/crdt/status' && req.method === 'GET') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    return jsonResponse(crdtBridge.getStatus());
+  }
+
+  if (path === '/crdt/open' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as { path?: string; initialContent?: string };
+    if (!body.path) return jsonResponse({ error: 'path is required' }, 400);
+    const handle = await crdtBridge.openFile(body.path, body.initialContent);
+    return jsonResponse({
+      path: handle.path,
+      contentLength: handle.content.length,
+      cursors: Array.from(handle.cursors.values()),
+    });
+  }
+
+  if (path === '/crdt/close' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as { path?: string };
+    if (!body.path) return jsonResponse({ error: 'path is required' }, 400);
+    crdtBridge.closeFile(body.path);
+    return jsonResponse({ closed: true, path: body.path });
+  }
+
+  if (path === '/crdt/files' && req.method === 'GET') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    return jsonResponse(crdtBridge.getOpenFiles());
+  }
+
+  if (path === '/crdt/cursor' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as { path?: string; line?: number; col?: number };
+    if (!body.path || body.line === undefined || body.col === undefined) {
+      return jsonResponse({ error: 'path, line, and col are required' }, 400);
+    }
+    crdtBridge.updateCursor(body.path, body.line, body.col);
+    return jsonResponse({ updated: true });
+  }
+
+  if (path === '/crdt/selection' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as {
+      path?: string; startLine?: number; startCol?: number; endLine?: number; endCol?: number;
+    };
+    if (!body.path || body.startLine === undefined || body.startCol === undefined ||
+        body.endLine === undefined || body.endCol === undefined) {
+      return jsonResponse({ error: 'path, startLine, startCol, endLine, endCol are required' }, 400);
+    }
+    crdtBridge.updateSelection(body.path, body.startLine, body.startCol, body.endLine, body.endCol);
+    return jsonResponse({ updated: true });
+  }
+
+  if (path === '/crdt/cursors' && req.method === 'GET') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const filePath = url.searchParams.get('path');
+    if (!filePath) return jsonResponse({ error: 'path query param is required' }, 400);
+    return jsonResponse(crdtBridge.getCursors(filePath));
+  }
+
+  if (path === '/crdt/diagnostics' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as {
+      path?: string;
+      diagnostics?: Array<{ filePath: string; line: number; column: number; severity: string; message: string; source: string }>;
+    };
+    if (!body.path || !body.diagnostics) {
+      return jsonResponse({ error: 'path and diagnostics are required' }, 400);
+    }
+    crdtBridge.shareDiagnostics(body.path, body.diagnostics as Parameters<typeof crdtBridge.shareDiagnostics>[1]);
+    return jsonResponse({ shared: true, count: body.diagnostics.length });
+  }
+
+  if (path === '/crdt/diagnostics' && req.method === 'GET') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const filePath = url.searchParams.get('path');
+    if (!filePath) return jsonResponse({ error: 'path query param is required' }, 400);
+    return jsonResponse(crdtBridge.getDiagnostics(filePath));
+  }
+
+  if (path === '/crdt/annotation' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as {
+      path?: string; blockId?: string; content?: string;
+      type?: 'comment' | 'todo' | 'question' | 'suggestion'; line?: number;
+    };
+    if (!body.path || !body.blockId || !body.content || !body.type || body.line === undefined) {
+      return jsonResponse({ error: 'path, blockId, content, type, and line are required' }, 400);
+    }
+    const annotation = crdtBridge.addAnnotation(body.path, {
+      blockId: body.blockId, content: body.content, type: body.type, line: body.line,
+    });
+    return jsonResponse(annotation);
+  }
+
+  if (path === '/crdt/annotations' && req.method === 'GET') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const filePath = url.searchParams.get('path');
+    if (!filePath) return jsonResponse({ error: 'path query param is required' }, 400);
+    return jsonResponse(crdtBridge.getAnnotations(filePath));
+  }
+
+  if (path === '/crdt/reading' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as { path?: string; blockId?: string; timeSpentMs?: number };
+    if (!body.path || !body.blockId || !body.timeSpentMs) {
+      return jsonResponse({ error: 'path, blockId, and timeSpentMs are required' }, 400);
+    }
+    crdtBridge.recordReading(body.path, body.blockId, body.timeSpentMs);
+    return jsonResponse({ recorded: true });
+  }
+
+  if (path === '/crdt/emotion' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as {
+      path?: string; blockId?: string; emotion?: string;
+      valence?: number; arousal?: number; dominance?: number; intensity?: number;
+    };
+    if (!body.path || !body.blockId || !body.emotion) {
+      return jsonResponse({ error: 'path, blockId, and emotion are required' }, 400);
+    }
+    crdtBridge.tagEmotion(body.path, {
+      blockId: body.blockId, emotion: body.emotion,
+      valence: body.valence ?? 0, arousal: body.arousal ?? 0,
+      dominance: body.dominance ?? 0, intensity: body.intensity ?? 0.5,
+    });
+    return jsonResponse({ tagged: true });
+  }
+
+  if (path === '/crdt/emotion' && req.method === 'GET') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const filePath = url.searchParams.get('path');
+    const blockId = url.searchParams.get('blockId');
+    if (!filePath || !blockId) {
+      return jsonResponse({ error: 'path and blockId query params are required' }, 400);
+    }
+    return jsonResponse(crdtBridge.getEmotionTags(filePath, blockId));
+  }
+
+  if (path === '/crdt/participants' && req.method === 'GET') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    return jsonResponse(crdtBridge.getParticipants());
+  }
+
+  if (path === '/crdt/undo' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as { path?: string };
+    if (!body.path) return jsonResponse({ error: 'path is required' }, 400);
+    crdtBridge.undo(body.path);
+    return jsonResponse({ undone: true });
+  }
+
+  if (path === '/crdt/redo' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as { path?: string };
+    if (!body.path) return jsonResponse({ error: 'path is required' }, 400);
+    crdtBridge.redo(body.path);
+    return jsonResponse({ redone: true });
+  }
+
   return jsonResponse({ error: 'Not found' }, 404);
 }
 
@@ -829,4 +1001,5 @@ export function startServer(): void {
   console.log(`[zedge] Agent: POST http://localhost:${port}/agent/session`);
   console.log(`[zedge] Forge: http://localhost:${port}/forge/status`);
   console.log(`[zedge] Health: http://localhost:${port}/health`);
+  console.log(`[zedge] Ghostwriter CRDT: http://localhost:${port}/crdt/status`);
 }

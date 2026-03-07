@@ -9,7 +9,10 @@
     "dev": "bun run --watch src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun --minify"
   },
-  "dependencies": {},
+  "dependencies": {
+    "yjs": "^13.6.0",
+    "@dashrelay/client": "workspace:*"
+  },
   "devDependencies": {
     "@types/bun": "^1.3.6",
     "typescript": "^5.9.0"

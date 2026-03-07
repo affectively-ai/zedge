@@ -32,6 +32,12 @@ export interface ZedgeConfig {
   };
   preferredModel: string;
   cloudRunDirect: boolean;
+  /** DashRelay WebSocket URL for Ghostwriter CRDT sync */
+  dashRelayUrl?: string;
+  /** DashRelay API key (format: dr_<64-hex>) */
+  dashRelayApiKey?: string;
+  /** UCAN token for relay authorization */
+  ucanToken?: string;
 }
 
 const DEFAULT_EDGEWORK_CONFIG: EdgeworkConfig = {

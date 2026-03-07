@@ -15,6 +15,7 @@ import {
   setCollabBridge,
   setKernelBridge,
   setCapacitorBridge,
+  setCrdtBridge,
 } from './server';
 import { joinPool, getPoolStatus } from './compute-node';
 import { startMesh, getMeshStatus } from './p2p-mesh';
@@ -26,6 +27,7 @@ import { VfsBridge } from './vfs-bridge';
 import { CollabBridge } from './collab-bridge';
 import { KernelBridge } from './kernel-bridge';
 import { CapacitorBridge } from './capacitor-bridge';
+import { CrdtBridge } from './crdt-bridge';
 
 async function main(): Promise<void> {
   console.log('[zedge] Starting companion sidecar v2.0...');
@@ -88,7 +90,6 @@ async function main(): Promise<void> {
   console.log('[zedge] VFS bridge initialized');
 
   // Initialize Collab Bridge (Phase 3)
-  const authStatus = whoami();
   const displayName = authStatus.email ?? `zedge-${meshNodeId.slice(0, 8)}`;
   const collab = new CollabBridge(meshNodeId, displayName);
   setCollabBridge(collab);
@@ -115,6 +116,28 @@ async function main(): Promise<void> {
   const capacitor = new CapacitorBridge();
   setCapacitorBridge(capacitor);
   console.log('[zedge] Capacitor bridge initialized');
+
+  // Initialize Ghostwriter CrdtBridge (Zedge 3.0)
+  const crdtConfig = {
+    workspaceId: Buffer.from(workspacePath).toString('base64url').slice(0, 16),
+    peerId: meshNodeId,
+    displayName,
+    relayUrl: config.dashRelayUrl,
+    ucan: config.ucanToken,
+    apiKey: config.dashRelayApiKey,
+  };
+  const crdt = new CrdtBridge(crdtConfig);
+  setCrdtBridge(crdt);
+
+  try {
+    await crdt.connect();
+    const crdtStatus = crdt.getStatus();
+    console.log(
+      `[zedge] Ghostwriter CRDT bridge connected (workspace: ${crdtStatus.workspaceId}, peers: ${crdtStatus.peerCount})`
+    );
+  } catch (err) {
+    console.log(`[zedge] Ghostwriter CRDT bridge offline (${String(err)}). Local-only mode.`);
+  }
 
   // Report initial status
   const meshStatus = getMeshStatus();
