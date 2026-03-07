@@ -100,13 +100,12 @@ function generateSettings(): void {
 
   const settings = {
     language_models: {
-      openai_compatible: [
-        {
-          name: 'Zedge',
+      openai_compatible: {
+        Zedge: {
           api_url: apiUrl,
           available_models: AVAILABLE_MODELS,
         },
-      ],
+      },
     },
   };
 

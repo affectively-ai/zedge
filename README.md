@@ -67,9 +67,8 @@ Open Zed settings (`Cmd+,` on macOS, `Ctrl+,` on Linux) and add:
 ```json
 {
   "language_models": {
-    "openai_compatible": [
-      {
-        "name": "Zedge",
+    "openai_compatible": {
+      "Zedge": {
         "api_url": "http://localhost:7331/v1",
         "available_models": [
           { "name": "tinyllama-1.1b", "display_name": "TinyLlama 1.1B (Fast)", "max_tokens": 2048 },
@@ -82,7 +81,7 @@ Open Zed settings (`Cmd+,` on macOS, `Ctrl+,` on Linux) and add:
           { "name": "lfm2.5-1.2b-glm-4.7-flash-thinking", "display_name": "LFM 2.5 1.2B (Thinking)", "max_tokens": 2048 }
         ]
       }
-    ]
+    }
   }
 }
 ```
@@ -95,7 +94,7 @@ bun open-source/zedge/scripts/generate-settings.ts
 
 ### 3. Use it
 
-Open the Zed AI assistant panel (`Cmd+Shift+A`), select "Zedge" as the provider, pick a model, and start chatting.
+Open the Zed agent panel via the command palette (`Cmd+Shift+P` → "Agent Panel") or click the Agent icon in the right toolbar. Select "Zedge" as the provider, pick a model, and start chatting.
 
 ## Building the Zed Extension from Source
 
