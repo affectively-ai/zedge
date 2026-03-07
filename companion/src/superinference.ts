@@ -89,6 +89,179 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_DEPTH = 3;
 const DEFAULT_TOKEN_BUDGET = 50_000;
 
+// --- Superinference 2.0: Composition Presets & Layer-Zone Routing ---
+
+/** Layer zones in a 32-layer transformer model */
+export type LayerZone = 'syntax' | 'semantics' | 'reasoning' | 'style';
+
+export interface LayerZoneRange {
+  zone: LayerZone;
+  startLayer: number;
+  endLayer: number;
+}
+
+/** Default layer-zone mapping for 32-layer models */
+export const LAYER_ZONES: LayerZoneRange[] = [
+  { zone: 'syntax', startLayer: 0, endLayer: 7 },
+  { zone: 'semantics', startLayer: 8, endLayer: 15 },
+  { zone: 'reasoning', startLayer: 16, endLayer: 23 },
+  { zone: 'style', startLayer: 24, endLayer: 31 },
+];
+
+/** Composition preset — defines model + adapter + layer routing for a task type */
+export interface CompositionPreset {
+  name: string;
+  description: string;
+  models: string[];
+  strategy: CollapseStrategy;
+  /** Optional LoRA adapter names per layer zone */
+  adapters?: Partial<Record<LayerZone, string>>;
+  /** Activation steering vectors per layer zone */
+  steering?: Partial<Record<LayerZone, { direction: string; strength: number }>>;
+}
+
+/** Built-in composition presets (from ebook ch10) */
+export const COMPOSITION_PRESETS: Record<string, CompositionPreset> = {
+  empathyFormal: {
+    name: 'Empathy + Formal',
+    description: 'Empathetic understanding with formal output style',
+    models: ['gemma3-4b-it', 'tinyllama-1.1b'],
+    strategy: 'consensus',
+    adapters: {
+      semantics: 'empathy-decoder',
+      style: 'formal-tone',
+    },
+    steering: {
+      reasoning: { direction: 'empathetic', strength: 0.7 },
+      style: { direction: 'formal', strength: 0.8 },
+    },
+  },
+  analyticalCasual: {
+    name: 'Analytical + Casual',
+    description: 'Deep analytical reasoning with casual delivery',
+    models: ['qwen-2.5-coder-7b', 'gemma3-4b-it'],
+    strategy: 'consensus',
+    adapters: {
+      reasoning: 'chain-of-thought',
+      style: 'casual-tone',
+    },
+    steering: {
+      reasoning: { direction: 'analytical', strength: 0.9 },
+      style: { direction: 'casual', strength: 0.6 },
+    },
+  },
+  supportiveMindful: {
+    name: 'Supportive + Mindful',
+    description: 'Encouraging feedback with mindful pacing',
+    models: ['gemma3-4b-it', 'tinyllama-1.1b'],
+    strategy: 'constructive',
+    adapters: {
+      semantics: 'supportive-framing',
+      style: 'mindful-pacing',
+    },
+    steering: {
+      semantics: { direction: 'supportive', strength: 0.8 },
+      style: { direction: 'mindful', strength: 0.7 },
+    },
+  },
+  codeReview: {
+    name: 'Code Review',
+    description: 'Constructive collapse with empathy adapter for PR reviews',
+    models: ['qwen-2.5-coder-7b', 'gemma3-4b-it', 'tinyllama-1.1b'],
+    strategy: 'constructive',
+    adapters: {
+      reasoning: 'constructive-critique',
+      style: 'empathetic-delivery',
+    },
+  },
+  bugFix: {
+    name: 'Bug Fix',
+    description: 'Analytical reasoning adapter for debugging',
+    models: ['qwen-2.5-coder-7b'],
+    strategy: 'fastest',
+    adapters: {
+      reasoning: 'root-cause-analysis',
+    },
+    steering: {
+      reasoning: { direction: 'analytical', strength: 1.0 },
+    },
+  },
+  autocomplete: {
+    name: 'Autocomplete',
+    description: 'Fastest collapse, syntax-only focus',
+    models: ['tinyllama-1.1b', 'qwen-2.5-coder-7b'],
+    strategy: 'fastest',
+    steering: {
+      syntax: { direction: 'completion', strength: 1.0 },
+    },
+  },
+};
+
+/**
+ * Get a composition preset by name.
+ */
+export function getCompositionPreset(name: string): CompositionPreset | null {
+  return COMPOSITION_PRESETS[name] ?? null;
+}
+
+/**
+ * Run superinference with a composition preset.
+ * Uses the preset's models, strategy, and steering configuration.
+ */
+export async function superinferWithPreset(
+  preset: CompositionPreset,
+  messages: ChatMessage[],
+  options?: { timeoutMs?: number; maxTokens?: number }
+): Promise<SuperinferenceResult> {
+  // Inject steering hints into the system prompt
+  let systemSuffix = '';
+  if (preset.steering) {
+    const steeringParts: string[] = [];
+    for (const [zone, config] of Object.entries(preset.steering)) {
+      steeringParts.push(`[${zone}:${config.direction}@${config.strength}]`);
+    }
+    systemSuffix = `\n\n[Steering: ${steeringParts.join(' ')}]`;
+  }
+
+  const steeringMessages = messages.map((m, i) => {
+    if (i === 0 && m.role === 'system') {
+      return { ...m, content: m.content + systemSuffix };
+    }
+    return m;
+  });
+
+  // If no system message, prepend one with steering
+  if (steeringMessages.length === 0 || steeringMessages[0].role !== 'system') {
+    steeringMessages.unshift({
+      role: 'system',
+      content: `You are an AI assistant.${systemSuffix}`,
+    });
+  }
+
+  return superinfer({
+    request: {
+      model: preset.models[0],
+      messages: steeringMessages,
+      max_tokens: options?.maxTokens,
+    },
+    models: preset.models,
+    strategy: preset.strategy,
+    timeoutMs: options?.timeoutMs,
+  });
+}
+
+/**
+ * Get the layer zone for a given layer number.
+ */
+export function getLayerZone(layer: number): LayerZone {
+  for (const range of LAYER_ZONES) {
+    if (layer >= range.startLayer && layer <= range.endLayer) {
+      return range.zone;
+    }
+  }
+  return 'style'; // Default to style for out-of-range
+}
+
 // --- Core Engine ---
 
 /**

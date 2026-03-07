@@ -8,13 +8,24 @@
  *   bun open-source/zedge/companion/src/index.ts
  */
 
-import { startServer, setForgeBridge } from './server';
+import {
+  startServer,
+  setForgeBridge,
+  setVfsBridge,
+  setCollabBridge,
+  setKernelBridge,
+  setCapacitorBridge,
+} from './server';
 import { joinPool, getPoolStatus } from './compute-node';
 import { startMesh, getMeshStatus } from './p2p-mesh';
 import { startProbing } from './latency-probe';
 import { whoami } from './auth';
 import { getZedgeConfig } from './config';
 import { ForgeBridge } from './forge-bridge';
+import { VfsBridge } from './vfs-bridge';
+import { CollabBridge } from './collab-bridge';
+import { KernelBridge } from './kernel-bridge';
+import { CapacitorBridge } from './capacitor-bridge';
 
 async function main(): Promise<void> {
   console.log('[zedge] Starting companion sidecar v2.0...');
@@ -55,7 +66,7 @@ async function main(): Promise<void> {
     );
   }
 
-  // Initialize Forge Bridge
+  // Initialize Forge Bridge (Phase 1)
   const workspacePath = process.cwd();
   const forge = new ForgeBridge(workspacePath);
   setForgeBridge(forge);
@@ -69,6 +80,41 @@ async function main(): Promise<void> {
       `[zedge] Forge projects: ${forgeProjects.map((p) => p.name).join(', ')}`
     );
   }
+
+  // Initialize VFS Bridge (Phase 2)
+  const meshNodeId = getMeshStatus().nodeId;
+  const vfs = new VfsBridge(meshNodeId);
+  setVfsBridge(vfs);
+  console.log('[zedge] VFS bridge initialized');
+
+  // Initialize Collab Bridge (Phase 3)
+  const authStatus = whoami();
+  const displayName = authStatus.email ?? `zedge-${meshNodeId.slice(0, 8)}`;
+  const collab = new CollabBridge(meshNodeId, displayName);
+  setCollabBridge(collab);
+  console.log('[zedge] Collab bridge initialized');
+
+  // Initialize Kernel Bridge (Phase 4)
+  const kernel = new KernelBridge();
+  setKernelBridge(kernel);
+
+  // Register Zedge as a kernel plugin
+  kernel.registerPlugin({
+    id: 'zedge-companion',
+    name: 'Zedge Companion',
+    version: '2.0.0',
+    capabilities: [
+      'inference', 'superinference', 'mesh', 'forge-deploy',
+      'vfs', 'collab', 'capacitor', 'compute-market',
+    ],
+    commands: [],
+  });
+  console.log(`[zedge] Kernel bridge initialized (${kernel.listCommands().length} commands)`);
+
+  // Initialize Capacitor Bridge (Phase 5)
+  const capacitor = new CapacitorBridge();
+  setCapacitorBridge(capacitor);
+  console.log('[zedge] Capacitor bridge initialized');
 
   // Report initial status
   const meshStatus = getMeshStatus();

@@ -200,3 +200,124 @@ export function recordServedRequest(tokensProcessed: number): void {
 export function recordDebt(amount: number): void {
   poolState.currentDebt += amount;
 }
+
+// ---------------------------------------------------------------------------
+// Compute Market 2.0 (Phase 8) — Token Economics & Dashboard
+// ---------------------------------------------------------------------------
+
+export interface ComputeMarketStatus {
+  /** Current clearing price (tokens per 1000 inference tokens) */
+  clearingPrice: number;
+  /** Supply/demand ratio (>1 = surplus, <1 = deficit) */
+  supplyDemandRatio: number;
+  /** This node's contribution stats */
+  contributor: ContributorStats;
+  /** Debt ledger */
+  debtLedger: DebtLedger;
+}
+
+export interface ContributorStats {
+  totalTokensEarned: number;
+  totalRequestsServed: number;
+  uptimeHours: number;
+  modelsHosted: string[];
+  averageLatencyMs: number;
+  peakRequestsPerMinute: number;
+}
+
+export interface DebtLedger {
+  tier: 'free' | 'premium' | 'ultra';
+  debtMax: number;
+  currentDebt: number;
+  lifetimeSpent: number;
+  lifetimeEarned: number;
+  netBalance: number;
+}
+
+const DEBT_TIERS: Record<string, { maxDebt: number }> = {
+  free: { maxDebt: 0 },
+  premium: { maxDebt: 5 },
+  ultra: { maxDebt: 20 },
+};
+
+let marketState = {
+  clearingPrice: 1.0,
+  supplyDemandRatio: 1.0,
+  peakRpm: 0,
+  totalLatencyMs: 0,
+  latencySamples: 0,
+  lifetimeSpent: 0,
+};
+
+/**
+ * Record a metered inference operation for billing.
+ */
+export function recordMeteredOperation(
+  tokensProcessed: number,
+  latencyMs: number,
+  isEarning: boolean
+): void {
+  if (isEarning) {
+    recordServedRequest(tokensProcessed);
+  } else {
+    const cost = (tokensProcessed / 1000) * marketState.clearingPrice;
+    poolState.currentDebt += cost;
+    marketState.lifetimeSpent += cost;
+  }
+
+  marketState.totalLatencyMs += latencyMs;
+  marketState.latencySamples++;
+}
+
+/**
+ * Update market clearing price based on supply/demand.
+ * Called periodically by the mesh.
+ */
+export function updateMarketPrice(
+  totalSupplyNodes: number,
+  totalDemandRequests: number
+): void {
+  const ratio = totalSupplyNodes > 0
+    ? totalDemandRequests / totalSupplyNodes
+    : 1;
+
+  marketState.supplyDemandRatio = ratio;
+
+  // Price adjusts based on demand: more demand = higher price
+  // Base price 1.0, scales with demand ratio
+  marketState.clearingPrice = Math.max(0.1, Math.min(10, ratio));
+}
+
+/**
+ * Get compute market dashboard data.
+ */
+export function getMarketStatus(): ComputeMarketStatus {
+  const config = getZedgeConfig();
+  const tier = getApiKey() ? 'premium' : 'free';
+  const tierConfig = DEBT_TIERS[tier] ?? DEBT_TIERS['free']!;
+
+  return {
+    clearingPrice: marketState.clearingPrice,
+    supplyDemandRatio: marketState.supplyDemandRatio,
+    contributor: {
+      totalTokensEarned: poolState.tokensEarned,
+      totalRequestsServed: poolState.requestsServed,
+      uptimeHours: poolState.startTime
+        ? (Date.now() - poolState.startTime) / 3_600_000
+        : 0,
+      modelsHosted: config.computePool.allowedModels,
+      averageLatencyMs: marketState.latencySamples > 0
+        ? marketState.totalLatencyMs / marketState.latencySamples
+        : 0,
+      peakRequestsPerMinute: marketState.peakRpm,
+    },
+    debtLedger: {
+      tier: tier as DebtLedger['tier'],
+      debtMax: tierConfig.maxDebt,
+      currentDebt: poolState.currentDebt,
+      lifetimeSpent: marketState.lifetimeSpent,
+      lifetimeEarned: poolState.tokensEarned,
+      netBalance: poolState.tokensEarned - marketState.lifetimeSpent,
+    },
+  };
+}

@@ -45,6 +45,16 @@ import {
 } from './binary-protocol';
 import type { ChatCompletionRequest } from './inference-bridge';
 import type { ForgeBridge } from './forge-bridge';
+import {
+  superinferWithPreset,
+  getCompositionPreset,
+  COMPOSITION_PRESETS,
+} from './superinference';
+import type { VfsBridge } from './vfs-bridge';
+import type { CollabBridge, CollabPresenceUpdate } from './collab-bridge';
+import type { KernelBridge } from './kernel-bridge';
+import type { CapacitorBridge, ProjectionType, CodeBlock } from './capacitor-bridge';
+import { getMarketStatus } from './compute-node';
 
 // --- Request body types ---
 
@@ -122,12 +132,32 @@ function corsHeaders(): Response {
   });
 }
 
-// --- Forge Bridge (set during server start) ---
+// --- Bridges (set during server start) ---
 
 let forgeBridge: ForgeBridge | null = null;
+let vfsBridge: VfsBridge | null = null;
+let collabBridge: CollabBridge | null = null;
+let kernelBridge: KernelBridge | null = null;
+let capacitorBridge: CapacitorBridge | null = null;
 
 export function setForgeBridge(bridge: ForgeBridge): void {
   forgeBridge = bridge;
+}
+
+export function setVfsBridge(bridge: VfsBridge): void {
+  vfsBridge = bridge;
+}
+
+export function setCollabBridge(bridge: CollabBridge): void {
+  collabBridge = bridge;
+}
+
+export function setKernelBridge(bridge: KernelBridge): void {
+  kernelBridge = bridge;
+}
+
+export function setCapacitorBridge(bridge: CapacitorBridge): void {
+  capacitorBridge = bridge;
 }
 
 // --- Request Handler ---
@@ -554,6 +584,231 @@ async function handleRequest(req: Request): Promise<Response> {
     const processId = path.slice('/forge/stop/'.length);
     await forgeBridge.stop(processId);
     return jsonResponse({ stopped: true, processId });
+  }
+
+  // ==================== VFS (Phase 2) ====================
+
+  if (path === '/vfs/mount' && req.method === 'POST') {
+    if (!vfsBridge) return jsonResponse({ error: 'VFS bridge not initialized' }, 503);
+    const body = (await req.json()) as { repoPath?: string; passphrase?: string };
+    if (!body.repoPath) return jsonResponse({ error: 'repoPath is required' }, 400);
+    const mount = vfsBridge.mount(body.repoPath, body.passphrase);
+    return jsonResponse({ id: mount.id, fileCount: mount.files.size, mountedAt: mount.mountedAt });
+  }
+
+  if (path.startsWith('/vfs/status/') && req.method === 'GET') {
+    if (!vfsBridge) return jsonResponse({ error: 'VFS bridge not initialized' }, 503);
+    const mountId = path.slice('/vfs/status/'.length);
+    return jsonResponse(vfsBridge.getStatus(mountId));
+  }
+
+  if (path === '/vfs/mounts' && req.method === 'GET') {
+    if (!vfsBridge) return jsonResponse({ error: 'VFS bridge not initialized' }, 503);
+    return jsonResponse(vfsBridge.getMounts().map((m) => ({
+      id: m.id, repoPath: m.repoPath, fileCount: m.files.size, peerCount: m.peers.size,
+    })));
+  }
+
+  if (path === '/vfs/changes' && req.method === 'GET') {
+    if (!vfsBridge) return jsonResponse({ error: 'VFS bridge not initialized' }, 503);
+    const since = url.searchParams.get('since');
+    return jsonResponse(vfsBridge.getChanges(since ? Number(since) : undefined));
+  }
+
+  // ==================== Collaborative Editing (Phase 3) ====================
+
+  if (path === '/collab/session' && req.method === 'POST') {
+    if (!collabBridge) return jsonResponse({ error: 'Collab bridge not initialized' }, 503);
+    const body = (await req.json()) as { filePath?: string; name?: string };
+    if (!body.filePath) return jsonResponse({ error: 'filePath is required' }, 400);
+    const session = collabBridge.createSession(body.filePath, body.name);
+    return jsonResponse({
+      id: session.id, name: session.name, hostPeerId: session.hostPeerId,
+      filePath: session.filePath, participants: Array.from(session.participants.values()),
+    });
+  }
+
+  if (path.startsWith('/collab/join/') && req.method === 'POST') {
+    if (!collabBridge) return jsonResponse({ error: 'Collab bridge not initialized' }, 503);
+    const sessionId = path.slice('/collab/join/'.length);
+    const body = (await req.json()) as { peerId?: string; displayName?: string };
+    if (!body.peerId || !body.displayName) {
+      return jsonResponse({ error: 'peerId and displayName are required' }, 400);
+    }
+    const participant = collabBridge.joinSession(sessionId, body.peerId, body.displayName);
+    if (!participant) return jsonResponse({ error: 'Session not found' }, 404);
+    return jsonResponse(participant);
+  }
+
+  if (path === '/collab/presence' && req.method === 'POST') {
+    if (!collabBridge) return jsonResponse({ error: 'Collab bridge not initialized' }, 503);
+    const body = (await req.json()) as CollabPresenceUpdate;
+    collabBridge.updatePresence(body);
+    return jsonResponse({ updated: true });
+  }
+
+  if (path === '/collab/sessions' && req.method === 'GET') {
+    if (!collabBridge) return jsonResponse({ error: 'Collab bridge not initialized' }, 503);
+    return jsonResponse(collabBridge.listSessions().map((s) => ({
+      id: s.id, name: s.name, filePath: s.filePath,
+      participantCount: s.participants.size, lastActivity: s.lastActivity,
+    })));
+  }
+
+  if (path.startsWith('/collab/participants/') && req.method === 'GET') {
+    if (!collabBridge) return jsonResponse({ error: 'Collab bridge not initialized' }, 503);
+    const sessionId = path.slice('/collab/participants/'.length);
+    return jsonResponse(collabBridge.getParticipants(sessionId));
+  }
+
+  // ==================== Kernel (Phase 4) ====================
+
+  if (path === '/kernel/commands' && req.method === 'GET') {
+    if (!kernelBridge) return jsonResponse({ error: 'Kernel bridge not initialized' }, 503);
+    return jsonResponse(kernelBridge.listCommands().map((c) => ({
+      id: c.id, label: c.label, description: c.description,
+    })));
+  }
+
+  if (path === '/kernel/execute' && req.method === 'POST') {
+    if (!kernelBridge) return jsonResponse({ error: 'Kernel bridge not initialized' }, 503);
+    const body = (await req.json()) as { commandId?: string; payload?: unknown };
+    if (!body.commandId) return jsonResponse({ error: 'commandId is required' }, 400);
+    try {
+      const result = await kernelBridge.executeCommand(body.commandId, body.payload);
+      return jsonResponse({ success: true, result });
+    } catch (err) {
+      return jsonResponse({ success: false, error: String(err) }, 400);
+    }
+  }
+
+  if (path === '/kernel/route' && req.method === 'POST') {
+    if (!kernelBridge) return jsonResponse({ error: 'Kernel bridge not initialized' }, 503);
+    const body = (await req.json()) as { task?: string; taskType?: string };
+    if (!body.task) return jsonResponse({ error: 'task is required' }, 400);
+    return jsonResponse(kernelBridge.routeTask(body.task, body.taskType));
+  }
+
+  if (path === '/kernel/daemons' && req.method === 'GET') {
+    if (!kernelBridge) return jsonResponse({ error: 'Kernel bridge not initialized' }, 503);
+    return jsonResponse(kernelBridge.getDaemonStatus());
+  }
+
+  if (path === '/kernel/plugins' && req.method === 'GET') {
+    if (!kernelBridge) return jsonResponse({ error: 'Kernel bridge not initialized' }, 503);
+    return jsonResponse(kernelBridge.getPlugins());
+  }
+
+  if (path === '/kernel/flight-log' && req.method === 'GET') {
+    if (!kernelBridge) return jsonResponse({ error: 'Kernel bridge not initialized' }, 503);
+    const limit = url.searchParams.get('limit');
+    return jsonResponse(kernelBridge.getFlightLog(limit ? Number(limit) : 50));
+  }
+
+  if (path === '/kernel/deep-link' && req.method === 'POST') {
+    if (!kernelBridge) return jsonResponse({ error: 'Kernel bridge not initialized' }, 503);
+    const body = (await req.json()) as { url?: string };
+    if (!body.url) return jsonResponse({ error: 'url is required' }, 400);
+    const parsed = kernelBridge.parseDeepLink(body.url);
+    if (!parsed) return jsonResponse({ error: 'Invalid deep link' }, 400);
+    return jsonResponse(parsed);
+  }
+
+  // ==================== Capacitor (Phase 5) ====================
+
+  if (path === '/capacitor/mount' && req.method === 'POST') {
+    if (!capacitorBridge) return jsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
+    const body = (await req.json()) as { path?: string; projection?: ProjectionType };
+    if (!body.path) return jsonResponse({ error: 'path is required' }, 400);
+    const mount = capacitorBridge.mount(body.path, body.projection);
+    return jsonResponse({ id: mount.id, path: mount.path, projection: mount.projection });
+  }
+
+  if (path.startsWith('/capacitor/layout/') && req.method === 'GET') {
+    if (!capacitorBridge) return jsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
+    const mountId = path.slice('/capacitor/layout/'.length);
+    return jsonResponse(capacitorBridge.getLayout(mountId));
+  }
+
+  if (path === '/capacitor/personalize' && req.method === 'POST') {
+    if (!capacitorBridge) return jsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
+    const body = (await req.json()) as { developerId?: string; preferences?: Record<string, unknown>; recentFiles?: string[]; focusArea?: string };
+    if (!body.developerId) return jsonResponse({ error: 'developerId is required' }, 400);
+    capacitorBridge.personalize({
+      developerId: body.developerId,
+      preferences: body.preferences ?? {},
+      recentFiles: body.recentFiles ?? [],
+      focusArea: body.focusArea,
+    });
+    return jsonResponse({ personalized: true });
+  }
+
+  if (path.startsWith('/capacitor/graph/') && req.method === 'GET') {
+    if (!capacitorBridge) return jsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
+    const mountId = path.slice('/capacitor/graph/'.length);
+    return jsonResponse(capacitorBridge.getClusters(mountId));
+  }
+
+  if (path === '/capacitor/project' && req.method === 'POST') {
+    if (!capacitorBridge) return jsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
+    const body = (await req.json()) as { mountId?: string; projection?: ProjectionType };
+    if (!body.mountId || !body.projection) {
+      return jsonResponse({ error: 'mountId and projection are required' }, 400);
+    }
+    capacitorBridge.setProjection(body.mountId, body.projection);
+    return jsonResponse({ projection: body.projection });
+  }
+
+  if (path === '/capacitor/index' && req.method === 'POST') {
+    if (!capacitorBridge) return jsonResponse({ error: 'Capacitor bridge not initialized' }, 503);
+    const body = (await req.json()) as { mountId?: string; block?: CodeBlock };
+    if (!body.mountId || !body.block) {
+      return jsonResponse({ error: 'mountId and block are required' }, 400);
+    }
+    capacitorBridge.indexBlock(body.mountId, body.block);
+    return jsonResponse({ indexed: true, blockId: body.block.id });
+  }
+
+  // ==================== Superinference 2.0 (Phase 6) ====================
+
+  if (path === '/v1/superinference/preset' && req.method === 'POST') {
+    const body = (await req.json()) as {
+      preset?: string;
+      messages?: Array<{ role: string; content: string }>;
+      timeout_ms?: number;
+      max_tokens?: number;
+    };
+    if (!body.preset) return jsonResponse({ error: 'preset is required' }, 400);
+    const preset = getCompositionPreset(body.preset);
+    if (!preset) {
+      return jsonResponse({
+        error: `Unknown preset: ${body.preset}. Available: ${Object.keys(COMPOSITION_PRESETS).join(', ')}`,
+      }, 400);
+    }
+    const result = await superinferWithPreset(
+      preset,
+      (body.messages ?? []) as ChatCompletionRequest['messages'],
+      { timeoutMs: body.timeout_ms, maxTokens: body.max_tokens }
+    );
+    return jsonResponse(result);
+  }
+
+  if (path === '/v1/superinference/presets' && req.method === 'GET') {
+    return jsonResponse(
+      Object.entries(COMPOSITION_PRESETS).map(([key, p]) => ({
+        key,
+        name: p.name,
+        description: p.description,
+        models: p.models,
+        strategy: p.strategy,
+      }))
+    );
+  }
+
+  // ==================== Compute Market 2.0 (Phase 8) ====================
+
+  if (path === '/market/status' && req.method === 'GET') {
+    return jsonResponse(getMarketStatus());
   }
 
   return jsonResponse({ error: 'Not found' }, 404);
