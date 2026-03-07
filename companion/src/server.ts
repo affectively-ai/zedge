@@ -1,7 +1,7 @@
 /**
- * Zedge Companion HTTP Server (v1.0)
+ * Zedge Companion HTTP Server (v2.0)
  *
- * localhost:7331 — OpenAI-compatible proxy + compute pool + mesh + superinference + ACP agent
+ * localhost:7331 — OpenAI-compatible proxy + compute pool + mesh + superinference + ACP agent + forge
  */
 
 import {
@@ -44,6 +44,7 @@ import {
   CONTENT_TYPE as BINARY_CONTENT_TYPE,
 } from './binary-protocol';
 import type { ChatCompletionRequest } from './inference-bridge';
+import type { ForgeBridge } from './forge-bridge';
 
 // --- Request body types ---
 
@@ -93,6 +94,10 @@ interface AgentTurnRequestBody {
   message?: string;
 }
 
+interface ForgeDeployRequestBody {
+  project?: string;
+}
+
 // --- Helpers ---
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -115,6 +120,14 @@ function corsHeaders(): Response {
         'Content-Type, Authorization, X-Zedge-Session',
     },
   });
+}
+
+// --- Forge Bridge (set during server start) ---
+
+let forgeBridge: ForgeBridge | null = null;
+
+export function setForgeBridge(bridge: ForgeBridge): void {
+  forgeBridge = bridge;
 }
 
 // --- Request Handler ---
@@ -472,6 +485,77 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse(getActiveSessions());
   }
 
+  // ==================== Forge (ForgoCD) ====================
+
+  if (path === '/forge/deploy' && req.method === 'POST') {
+    if (!forgeBridge) {
+      return jsonResponse({ error: 'Forge bridge not initialized' }, 503);
+    }
+    const body = (await req.json()) as ForgeDeployRequestBody;
+    const result = await forgeBridge.deploy(body.project);
+    return jsonResponse(result, result.success ? 200 : 400);
+  }
+
+  if (path === '/forge/status' && req.method === 'GET') {
+    if (!forgeBridge) {
+      return jsonResponse({ error: 'Forge bridge not initialized' }, 503);
+    }
+    return jsonResponse(forgeBridge.getStatus());
+  }
+
+  if (path === '/forge/projects' && req.method === 'GET') {
+    if (!forgeBridge) {
+      return jsonResponse({ error: 'Forge bridge not initialized' }, 503);
+    }
+    const projects = await forgeBridge.discoverProjects();
+    return jsonResponse({
+      count: projects.length,
+      projects: projects.map((p) => ({
+        name: p.name,
+        dir: p.dir,
+        kind: p.config.kind,
+        runtime: p.config.runtime,
+        port: p.config.port,
+        buildCommand: p.config.buildCommand,
+        configSource: p.configSource,
+      })),
+    });
+  }
+
+  if (path.startsWith('/forge/logs/') && req.method === 'GET') {
+    if (!forgeBridge) {
+      return jsonResponse({ error: 'Forge bridge not initialized' }, 503);
+    }
+    const processId = path.slice('/forge/logs/'.length);
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        for await (const line of forgeBridge!.getLogs(processId)) {
+          controller.enqueue(encoder.encode(`data: ${line}\n\n`));
+        }
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  }
+
+  if (path.startsWith('/forge/stop/') && req.method === 'POST') {
+    if (!forgeBridge) {
+      return jsonResponse({ error: 'Forge bridge not initialized' }, 503);
+    }
+    const processId = path.slice('/forge/stop/'.length);
+    await forgeBridge.stop(processId);
+    return jsonResponse({ stopped: true, processId });
+  }
+
   return jsonResponse({ error: 'Not found' }, 404);
 }
 
@@ -483,10 +567,11 @@ export function startServer(): void {
     fetch: handleRequest,
   });
 
-  console.log(`[zedge] Companion sidecar v1.0 on http://localhost:${port}`);
+  console.log(`[zedge] Companion sidecar v2.0 on http://localhost:${port}`);
   console.log(`[zedge] OpenAI-compatible API: http://localhost:${port}/v1`);
   console.log(`[zedge] Superinference: POST http://localhost:${port}/v1/superinference`);
   console.log(`[zedge] Mesh: http://localhost:${port}/mesh/status`);
   console.log(`[zedge] Agent: POST http://localhost:${port}/agent/session`);
+  console.log(`[zedge] Forge: http://localhost:${port}/forge/status`);
   console.log(`[zedge] Health: http://localhost:${port}/health`);
 }

@@ -1,22 +1,23 @@
 #!/usr/bin/env bun
 /**
- * Zedge Companion Sidecar v1.0
+ * Zedge Companion Sidecar v2.0
  *
- * Entry point — starts HTTP server, P2P mesh, latency probing, and compute pool.
+ * Entry point — starts HTTP server, P2P mesh, latency probing, compute pool, and forge bridge.
  *
  * Usage:
  *   bun open-source/zedge/companion/src/index.ts
  */
 
-import { startServer } from './server';
+import { startServer, setForgeBridge } from './server';
 import { joinPool, getPoolStatus } from './compute-node';
 import { startMesh, getMeshStatus } from './p2p-mesh';
 import { startProbing } from './latency-probe';
 import { whoami } from './auth';
 import { getZedgeConfig } from './config';
+import { ForgeBridge } from './forge-bridge';
 
 async function main(): Promise<void> {
-  console.log('[zedge] Starting companion sidecar v1.0...');
+  console.log('[zedge] Starting companion sidecar v2.0...');
 
   // Start HTTP server
   startServer();
@@ -51,6 +52,21 @@ async function main(): Promise<void> {
     const status = getPoolStatus();
     console.log(
       `[zedge] Pool: ${status.connectedNodes} nodes, ${status.tokensEarned} tokens earned, WASM bridge: ${status.wasmBridgeAvailable ? 'yes' : 'no'}`
+    );
+  }
+
+  // Initialize Forge Bridge
+  const workspacePath = process.cwd();
+  const forge = new ForgeBridge(workspacePath);
+  setForgeBridge(forge);
+
+  const forgeProjects = await forge.discoverProjects();
+  console.log(
+    `[zedge] Forge: ${forgeProjects.length} project(s) discovered in workspace`
+  );
+  if (forgeProjects.length > 0) {
+    console.log(
+      `[zedge] Forge projects: ${forgeProjects.map((p) => p.name).join(', ')}`
     );
   }
 
