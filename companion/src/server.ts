@@ -57,6 +57,8 @@ import type { CapacitorBridge, ProjectionType, CodeBlock } from './capacitor-bri
 import type { CrdtBridge } from './crdt-bridge';
 import type { UcanBridge, AgentMode } from './ucan-bridge';
 import type { UcanCapability } from '@affectively/auth';
+import { AgentParticipant } from './agent-participant';
+import type { AgentEdit, AgentReplacement } from './agent-participant';
 import { getMarketStatus } from './compute-node';
 
 // --- Request body types ---
@@ -144,6 +146,7 @@ let kernelBridge: KernelBridge | null = null;
 let capacitorBridge: CapacitorBridge | null = null;
 let crdtBridge: CrdtBridge | null = null;
 let ucanBridge: UcanBridge | null = null;
+const agentParticipants = new Map<string, AgentParticipant>();
 
 export function setForgeBridge(bridge: ForgeBridge): void {
   forgeBridge = bridge;
@@ -987,6 +990,183 @@ async function handleRequest(req: Request): Promise<Response> {
     const body = (await req.json()) as { path?: string };
     if (!body.path) return jsonResponse({ error: 'path is required' }, 400);
     crdtBridge.redo(body.path);
+    return jsonResponse({ redone: true });
+  }
+
+  // ==================== Agent Participant (Ghostwriter Phase 3) ====================
+
+  if (path === '/agent-participant/join' && req.method === 'POST') {
+    if (!crdtBridge) return jsonResponse({ error: 'CRDT bridge not initialized' }, 503);
+    const body = (await req.json()) as {
+      agentId?: string; displayName?: string; model?: string;
+      color?: string; mode?: AgentMode;
+    };
+    if (!body.agentId || !body.model) {
+      return jsonResponse({ error: 'agentId and model are required' }, 400);
+    }
+    const mode = body.mode ?? 'review';
+    const agent = new AgentParticipant(
+      {
+        agentId: body.agentId,
+        displayName: body.displayName ?? `${body.model} (${mode})`,
+        model: body.model,
+        color: body.color ?? '',
+        mode,
+      },
+      crdtBridge,
+      ucanBridge ?? undefined,
+    );
+    await agent.join();
+    agentParticipants.set(body.agentId, agent);
+    return jsonResponse(agent.getStatus());
+  }
+
+  if (path === '/agent-participant/leave' && req.method === 'POST') {
+    const body = (await req.json()) as { agentId?: string };
+    if (!body.agentId) return jsonResponse({ error: 'agentId is required' }, 400);
+    const agent = agentParticipants.get(body.agentId);
+    if (!agent) return jsonResponse({ error: 'Agent not found' }, 404);
+    agent.leave();
+    agentParticipants.delete(body.agentId);
+    return jsonResponse({ left: true, agentId: body.agentId });
+  }
+
+  if (path === '/agent-participant/status' && req.method === 'GET') {
+    const agentId = url.searchParams.get('agentId');
+    if (agentId) {
+      const agent = agentParticipants.get(agentId);
+      if (!agent) return jsonResponse({ error: 'Agent not found' }, 404);
+      return jsonResponse(agent.getStatus());
+    }
+    return jsonResponse(Array.from(agentParticipants.values()).map((a) => a.getStatus()));
+  }
+
+  if (path === '/agent-participant/open' && req.method === 'POST') {
+    const body = (await req.json()) as { agentId?: string; path?: string; initialContent?: string };
+    if (!body.agentId || !body.path) {
+      return jsonResponse({ error: 'agentId and path are required' }, 400);
+    }
+    const agent = agentParticipants.get(body.agentId);
+    if (!agent) return jsonResponse({ error: 'Agent not found' }, 404);
+    const state = await agent.openFile(body.path, body.initialContent);
+    return jsonResponse(state);
+  }
+
+  if (path === '/agent-participant/read' && req.method === 'GET') {
+    const agentId = url.searchParams.get('agentId');
+    const filePath = url.searchParams.get('path');
+    if (!agentId || !filePath) {
+      return jsonResponse({ error: 'agentId and path query params are required' }, 400);
+    }
+    const agent = agentParticipants.get(agentId);
+    if (!agent) return jsonResponse({ error: 'Agent not found' }, 404);
+    const content = agent.readFile(filePath);
+    if (content === null) return jsonResponse({ error: 'File not open' }, 404);
+    return jsonResponse({ path: filePath, content });
+  }
+
+  if (path === '/agent-participant/insert' && req.method === 'POST') {
+    const body = (await req.json()) as { agentId?: string; path?: string; offset?: number; text?: string };
+    if (!body.agentId || !body.path || body.offset === undefined || !body.text) {
+      return jsonResponse({ error: 'agentId, path, offset, and text are required' }, 400);
+    }
+    const agent = agentParticipants.get(body.agentId);
+    if (!agent) return jsonResponse({ error: 'Agent not found' }, 404);
+    const ok = agent.insert(body.path, body.offset, body.text);
+    return jsonResponse({ inserted: ok });
+  }
+
+  if (path === '/agent-participant/delete' && req.method === 'POST') {
+    const body = (await req.json()) as { agentId?: string; path?: string; offset?: number; length?: number };
+    if (!body.agentId || !body.path || body.offset === undefined || !body.length) {
+      return jsonResponse({ error: 'agentId, path, offset, and length are required' }, 400);
+    }
+    const agent = agentParticipants.get(body.agentId);
+    if (!agent) return jsonResponse({ error: 'Agent not found' }, 404);
+    const ok = agent.delete(body.path, body.offset, body.length);
+    return jsonResponse({ deleted: ok });
+  }
+
+  if (path === '/agent-participant/replace' && req.method === 'POST') {
+    const body = (await req.json()) as {
+      agentId?: string; path?: string; offset?: number; length?: number; text?: string;
+    };
+    if (!body.agentId || !body.path || body.offset === undefined || !body.length || body.text === undefined) {
+      return jsonResponse({ error: 'agentId, path, offset, length, and text are required' }, 400);
+    }
+    const agent = agentParticipants.get(body.agentId);
+    if (!agent) return jsonResponse({ error: 'Agent not found' }, 404);
+    const ok = agent.replace(body.path, body.offset, body.length, body.text);
+    return jsonResponse({ replaced: ok });
+  }
+
+  if (path === '/agent-participant/batch-edit' && req.method === 'POST') {
+    const body = (await req.json()) as { agentId?: string; edits?: AgentEdit[] };
+    if (!body.agentId || !body.edits?.length) {
+      return jsonResponse({ error: 'agentId and edits are required' }, 400);
+    }
+    const agent = agentParticipants.get(body.agentId);
+    if (!agent) return jsonResponse({ error: 'Agent not found' }, 404);
+    const applied = agent.applyEdits(body.edits);
+    return jsonResponse({ applied });
+  }
+
+  if (path === '/agent-participant/batch-replace' && req.method === 'POST') {
+    const body = (await req.json()) as { agentId?: string; replacements?: AgentReplacement[] };
+    if (!body.agentId || !body.replacements?.length) {
+      return jsonResponse({ error: 'agentId and replacements are required' }, 400);
+    }
+    const agent = agentParticipants.get(body.agentId);
+    if (!agent) return jsonResponse({ error: 'Agent not found' }, 404);
+    const applied = agent.applyReplacements(body.replacements);
+    return jsonResponse({ applied });
+  }
+
+  if (path === '/agent-participant/review' && req.method === 'POST') {
+    const body = (await req.json()) as {
+      agentId?: string; path?: string; line?: number; content?: string; type?: 'comment' | 'suggestion';
+    };
+    if (!body.agentId || !body.path || body.line === undefined || !body.content) {
+      return jsonResponse({ error: 'agentId, path, line, and content are required' }, 400);
+    }
+    const agent = agentParticipants.get(body.agentId);
+    if (!agent) return jsonResponse({ error: 'Agent not found' }, 404);
+    if (body.type === 'suggestion') {
+      agent.addSuggestion(body.path, body.line, body.content);
+    } else {
+      agent.addReviewComment(body.path, body.line, body.content);
+    }
+    return jsonResponse({ reviewed: true });
+  }
+
+  if (path === '/agent-participant/thinking' && req.method === 'POST') {
+    const body = (await req.json()) as { agentId?: string; context?: string };
+    if (!body.agentId) return jsonResponse({ error: 'agentId is required' }, 400);
+    const agent = agentParticipants.get(body.agentId);
+    if (!agent) return jsonResponse({ error: 'Agent not found' }, 404);
+    agent.setThinking(body.context ?? '');
+    return jsonResponse({ thinking: true });
+  }
+
+  if (path === '/agent-participant/undo' && req.method === 'POST') {
+    const body = (await req.json()) as { agentId?: string; path?: string };
+    if (!body.agentId || !body.path) {
+      return jsonResponse({ error: 'agentId and path are required' }, 400);
+    }
+    const agent = agentParticipants.get(body.agentId);
+    if (!agent) return jsonResponse({ error: 'Agent not found' }, 404);
+    agent.undo(body.path);
+    return jsonResponse({ undone: true });
+  }
+
+  if (path === '/agent-participant/redo' && req.method === 'POST') {
+    const body = (await req.json()) as { agentId?: string; path?: string };
+    if (!body.agentId || !body.path) {
+      return jsonResponse({ error: 'agentId and path are required' }, 400);
+    }
+    const agent = agentParticipants.get(body.agentId);
+    if (!agent) return jsonResponse({ error: 'Agent not found' }, 404);
+    agent.redo(body.path);
     return jsonResponse({ redone: true });
   }
 
