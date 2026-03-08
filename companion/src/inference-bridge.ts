@@ -694,8 +694,8 @@ export function createSSEProxyStream(
                 const pos = parseInt(prefillMatch[1], 10);
                 const total = parseInt(prefillMatch[2], 10);
                 const pct = Math.floor((pos / total) * 100);
-                // Emit at start, every 25%, and 100%
-                if (!emittedProgress || pct >= lastPrefillPct + 25 || pos === total) {
+                // Emit at 25%, 50%, 75%, 100% — skip 0% (no useful info)
+                if (pct >= 25 && (!emittedProgress || pct >= lastPrefillPct + 25 || pos === total)) {
                   const isFirst = !emittedProgress;
                   emittedProgress = true;
                   lastPrefillPct = pct;
@@ -716,12 +716,9 @@ export function createSSEProxyStream(
                     enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
                   } else {
                     // content path (italic markdown, visible in chat)
-                    const filled = Math.round(pct / 10);
-                    const empty = 10 - filled;
-                    const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(empty);
                     const label = isFirst
-                      ? `*Prefill ${bar} ${pct}%`
-                      : ` ${bar} ${pct}%`;
+                      ? `*Prefill ${pct}%`
+                      : `..${pct}%`;
                     const progressChunk = {
                       id: progressId,
                       object: 'chat.completion.chunk',
