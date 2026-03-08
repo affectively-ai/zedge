@@ -1,2 +1,0 @@
-createSrcSidebar('[["zed_extension_api",["",[["wit",[["since_v0.2.0",[],["settings.rs"]]]]],["extension_api.rs","http_client.rs","process.rs","settings.rs"]]]]');
-//{"start":19,"fragment_lengths":[139]}

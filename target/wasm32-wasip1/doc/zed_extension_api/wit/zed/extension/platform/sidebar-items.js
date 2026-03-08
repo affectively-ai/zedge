@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Architecture","Os"],"fn":["current_platform"]};

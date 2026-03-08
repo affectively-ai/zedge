@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["as_i32","as_i64","bool_lift","cabi_dealloc","invalid_enum_discriminant","run_ctors_once","string_lift"],"mod":["alloc"],"struct":["Resource","String","Vec"],"trait":["AsI32","AsI64","WasmResource"]};

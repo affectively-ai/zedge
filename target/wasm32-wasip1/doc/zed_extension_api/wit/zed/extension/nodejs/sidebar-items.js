@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["node_binary_path","npm_install_package","npm_package_installed_version","npm_package_latest_version"]};

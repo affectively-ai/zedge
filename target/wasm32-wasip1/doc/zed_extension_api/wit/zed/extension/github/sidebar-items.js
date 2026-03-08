@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["github_release_by_tag_name","latest_github_release"],"struct":["GithubRelease","GithubReleaseAsset","GithubReleaseOptions"]};

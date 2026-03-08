@@ -1,1 +1,0 @@
-rd_("Aazed_extension_api")
