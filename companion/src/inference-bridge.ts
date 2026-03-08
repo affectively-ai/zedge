@@ -784,7 +784,6 @@ export function createSSEProxyStream(
         }
         logInference(`[sse-proxy] tier=${tier} stream-end: ${totalBytes}B ${dataEventCount} data-events sawDone=${sawDone} ${elapsed}ms`);
         closeController();
-        }
       }
     },
   });
