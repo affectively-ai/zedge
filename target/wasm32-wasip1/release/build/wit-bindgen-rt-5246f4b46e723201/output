@@ -1,0 +1,2 @@
+cargo:rustc-link-lib=static=wit_bindgen_cabi_realloc0_41_0
+cargo:rustc-link-search=native=/Users/buley/Documents/Code/emotions/open-source/zedge/target/wasm32-wasip1/release/build/wit-bindgen-rt-5246f4b46e723201/out

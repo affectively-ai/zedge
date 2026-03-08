@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["SlashCommand","SlashCommandArgumentCompletion","SlashCommandOutput","SlashCommandOutputSection"],"type":["Range"]};

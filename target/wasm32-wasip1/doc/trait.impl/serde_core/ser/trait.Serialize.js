@@ -1,0 +1,9 @@
+(function() {
+    var implementors = Object.fromEntries([["zed_extension_api",[["impl <a class=\"trait\" href=\"https://docs.rs/serde_core/1.0.228/serde_core/ser/trait.Serialize.html\" title=\"trait serde_core::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"zed_extension_api/settings/struct.CommandSettings.html\" title=\"struct zed_extension_api::settings::CommandSettings\">CommandSettings</a>"],["impl <a class=\"trait\" href=\"https://docs.rs/serde_core/1.0.228/serde_core/ser/trait.Serialize.html\" title=\"trait serde_core::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"zed_extension_api/settings/struct.ContextServerSettings.html\" title=\"struct zed_extension_api::settings::ContextServerSettings\">ContextServerSettings</a>"],["impl <a class=\"trait\" href=\"https://docs.rs/serde_core/1.0.228/serde_core/ser/trait.Serialize.html\" title=\"trait serde_core::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"zed_extension_api/settings/struct.LanguageSettings.html\" title=\"struct zed_extension_api::settings::LanguageSettings\">LanguageSettings</a>"],["impl <a class=\"trait\" href=\"https://docs.rs/serde_core/1.0.228/serde_core/ser/trait.Serialize.html\" title=\"trait serde_core::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"zed_extension_api/settings/struct.LspSettings.html\" title=\"struct zed_extension_api::settings::LspSettings\">LspSettings</a>"]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":57,"fragment_lengths":[1372]}

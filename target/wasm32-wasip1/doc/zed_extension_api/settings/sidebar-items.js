@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["get_settings"],"mod":["types"],"struct":["CommandSettings","ContextServerSettings","LanguageSettings","LspSettings"]};

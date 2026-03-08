@@ -2,124 +2,89 @@ mod context_server;
 mod provider;
 mod slash_commands;
 
-use zed_extension_api as zed;
+use zed_extension_api::{self as zed, *};
 
-struct ZedgeExtension {
-    companion_url: String,
-}
+struct ZedgeExtension;
 
 impl zed::Extension for ZedgeExtension {
     fn new() -> Self {
-        ZedgeExtension {
-            companion_url: provider::COMPANION_URL.to_string(),
-        }
-    }
-
-    fn language_model_id(&self) -> Option<String> {
-        Some("zedge".to_string())
-    }
-
-    fn language_model_name(&self) -> Option<String> {
-        Some("Zedge".to_string())
-    }
-
-    fn complete(&self, params: zed::CompletionParams) -> Result<String, String> {
-        let request_body = serde_json::json!({
-            "model": params.model.unwrap_or_else(|| "tinyllama-1.1b".to_string()),
-            "messages": params.messages.iter().map(|m| {
-                serde_json::json!({
-                    "role": m.role,
-                    "content": m.content
-                })
-            }).collect::<Vec<_>>(),
-            "temperature": params.temperature.unwrap_or(0.7),
-            "max_tokens": params.max_tokens.unwrap_or(2048),
-            "stream": false
-        });
-
-        let url = format!("{}/v1/chat/completions", self.companion_url);
-
-        let response = zed::http_client::fetch(&zed::http_client::HttpRequest {
-            url: url.clone(),
-            method: zed::http_client::HttpMethod::Post,
-            headers: vec![
-                ("Content-Type".to_string(), "application/json".to_string()),
-            ],
-            body: Some(request_body.to_string()),
-            redirect_policy: zed::http_client::RedirectPolicy::FollowAll,
-        }).map_err(|e| format!("HTTP error: {}", e))?;
-
-        let body: serde_json::Value = serde_json::from_str(&response.body)
-            .map_err(|e| format!("JSON parse error: {}", e))?;
-
-        body["choices"][0]["message"]["content"]
-            .as_str()
-            .map(|s| s.to_string())
-            .ok_or_else(|| "No content in response".to_string())
+        ZedgeExtension
     }
 
     fn run_slash_command(
         &self,
-        command: zed::SlashCommand,
+        command: SlashCommand,
         _args: Vec<String>,
-    ) -> Result<String, String> {
+        worktree: Option<&Worktree>,
+    ) -> Result<SlashCommandOutput, String> {
         match command.name.as_str() {
-            "zedge-status" => {
-                let url = format!("{}/health", self.companion_url);
-                match zed::http_client::fetch(&zed::http_client::HttpRequest {
-                    url,
-                    method: zed::http_client::HttpMethod::Get,
-                    headers: vec![],
-                    body: None,
-                    redirect_policy: zed::http_client::RedirectPolicy::FollowAll,
-                }) {
-                    Ok(resp) => Ok(slash_commands::format_status_response(&resp.body)),
-                    Err(e) => Ok(format!("Companion unavailable: {}. Start it with: bun open-source/zedge/companion/src/index.ts", e)),
-                }
-            }
-            "zedge-models" => {
-                let url = format!("{}/v1/models", self.companion_url);
-                match zed::http_client::fetch(&zed::http_client::HttpRequest {
-                    url,
-                    method: zed::http_client::HttpMethod::Get,
-                    headers: vec![],
-                    body: None,
-                    redirect_policy: zed::http_client::RedirectPolicy::FollowAll,
-                }) {
-                    Ok(resp) => Ok(slash_commands::format_models_response(&resp.body)),
-                    Err(e) => Ok(format!("Companion unavailable: {}", e)),
-                }
-            }
-            "zedge-pool" => {
-                let url = format!("{}/compute-pool/status", self.companion_url);
-                match zed::http_client::fetch(&zed::http_client::HttpRequest {
-                    url,
-                    method: zed::http_client::HttpMethod::Get,
-                    headers: vec![],
-                    body: None,
-                    redirect_policy: zed::http_client::RedirectPolicy::FollowAll,
-                }) {
-                    Ok(resp) => Ok(slash_commands::format_pool_response(&resp.body)),
-                    Err(e) => Ok(format!("Companion unavailable: {}", e)),
-                }
-            }
-            "zedge-feedback" => {
-                Ok("Feedback noted. Quality ratings help improve model routing.".to_string())
-            }
+            "zedge-status" => slash_commands::run_status(worktree),
+            "zedge-models" => slash_commands::run_models(),
+            "zedge-pool" => slash_commands::run_pool(),
+            "zedge-feedback" => slash_commands::run_feedback(),
             _ => Err(format!("Unknown command: {}", command.name)),
         }
     }
 
-    fn slash_commands(&self) -> Vec<zed::SlashCommand> {
-        slash_commands::COMMANDS
-            .iter()
-            .map(|cmd| zed::SlashCommand {
-                name: cmd.name.to_string(),
-                description: cmd.description.to_string(),
-                tooltip_text: cmd.description.to_string(),
-                requires_argument: false,
+    fn complete_slash_command_argument(
+        &self,
+        command: SlashCommand,
+        _args: Vec<String>,
+    ) -> Result<Vec<SlashCommandArgumentCompletion>, String> {
+        match command.name.as_str() {
+            "zedge-models" => Ok(provider::MODELS
+                .iter()
+                .map(|m| SlashCommandArgumentCompletion {
+                    label: m.display_name.to_string(),
+                    new_text: m.id.to_string(),
+                    run_command: true,
+                })
+                .collect()),
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    fn context_server_command(
+        &mut self,
+        context_server_id: &ContextServerId,
+        _project: &Project,
+    ) -> Result<Command> {
+        if context_server_id.as_ref() == "zedge-companion" {
+            Ok(Command {
+                command: "bun".to_string(),
+                args: vec!["open-source/zedge/companion/src/index.ts".to_string()],
+                env: Vec::new(),
             })
-            .collect()
+        } else {
+            Err(format!("Unknown context server: {context_server_id}"))
+        }
+    }
+
+    fn context_server_configuration(
+        &mut self,
+        context_server_id: &ContextServerId,
+        _project: &Project,
+    ) -> Result<Option<ContextServerConfiguration>> {
+        if context_server_id.as_ref() == "zedge-companion" {
+            Ok(Some(ContextServerConfiguration {
+                installation_instructions: "Install Bun (https://bun.sh) and run:\n\n```\nbun open-source/zedge/companion/src/index.ts\n```\n\nThe companion sidecar provides inference, CRDT collaboration, and workspace context on localhost:7331.".to_string(),
+                settings_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "port": { "type": "number", "default": 7331 },
+                        "preferredModel": { "type": "string", "default": "tinyllama-1.1b" },
+                        "cloudRunDirect": { "type": "boolean", "default": true }
+                    }
+                }).to_string(),
+                default_settings: serde_json::json!({
+                    "port": 7331,
+                    "preferredModel": "tinyllama-1.1b",
+                    "cloudRunDirect": true
+                }).to_string(),
+            }))
+        } else {
+            Ok(None)
+        }
     }
 }
 
