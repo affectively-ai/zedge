@@ -594,11 +594,12 @@ export function createSSEProxyStream(
       let sawDone = false;
       const streamStart = Date.now();
       let lineBuf = '';
-      // Track prefill and debug info via reasoning_content (Zed's thinking UI).
-      // Zed parses `reasoning_content` from deltas and renders in a thinking panel,
-      // keeping debug info separate from the response content.
+      // Debug/progress info can go via reasoning_content (Zed thinking UI)
+      // or as content (italic markdown). reasoning_content is better UX but
+      // currently broken in Zed's openai_compatible provider (#46794).
+      const useReasoning = getZedgeConfig().reasoningContent === true;
       let lastPrefillPct = -1;
-      let reasoningStarted = false;
+      let emittedProgress = false;
       const progressId = `chatcmpl-progress-${Date.now()}`;
       const progressCreated = Math.floor(Date.now() / 1000);
 
@@ -627,12 +628,12 @@ export function createSSEProxyStream(
               } else if (!firstDataLogged) {
                 firstDataLogged = true;
                 logInference(`[sse-proxy] tier=${tier} first-data: ${payload.slice(0, 200)}`);
-                // Emit chain debug info as reasoning_content (shown in Zed's thinking UI)
-                if (!reasoningStarted) {
-                  reasoningStarted = true;
-                  const chainInfo = attempts?.length
-                    ? attempts.map((a) => `${a.tier}:${a.status}(${a.ms}ms)`).join(' → ')
-                    : tier;
+                // Emit chain debug info before first real token
+                const chainInfo = attempts?.length
+                  ? attempts.map((a) => `${a.tier}:${a.status}(${a.ms}ms)`).join(' > ')
+                  : tier;
+                if (useReasoning) {
+                  // reasoning_content goes into Zed's thinking UI (when supported)
                   const debugChunk = {
                     id: progressId,
                     object: 'chat.completion.chunk',
@@ -645,6 +646,20 @@ export function createSSEProxyStream(
                     }],
                   };
                   controller.enqueue(encoder.encode(`data: ${JSON.stringify(debugChunk)}\n\n`));
+                } else if (emittedProgress) {
+                  // Close the italic prefill line with chain info, then separator
+                  const sep = {
+                    id: progressId,
+                    object: 'chat.completion.chunk',
+                    created: progressCreated,
+                    model: tier,
+                    choices: [{
+                      index: 0,
+                      delta: { content: ` | ${chainInfo}*\n\n` },
+                      finish_reason: null,
+                    }],
+                  };
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(sep)}\n\n`));
                 }
               }
               controller.enqueue(encoder.encode(line + '\n'));
@@ -654,28 +669,56 @@ export function createSSEProxyStream(
               // Log upstream comments (heartbeat, prefill) but don't forward raw
               logInference(`[sse-proxy] tier=${tier} upstream: ${line.slice(0, 100)}`);
 
-              // Convert prefill progress into reasoning_content (Zed's thinking UI).
-              // Format: `: prefill 8/291` → emit as reasoning_content delta.
+              // Convert prefill progress into SSE delta events.
+              // Format: `: prefill 8/291` → emit via reasoning_content or content.
               const prefillMatch = line.match(/^: prefill (\d+)\/(\d+)/);
-              if (prefillMatch) {
+              if (prefillMatch && !firstDataLogged) {
                 const pos = parseInt(prefillMatch[1], 10);
                 const total = parseInt(prefillMatch[2], 10);
                 const pct = Math.floor((pos / total) * 100);
-                // Emit at milestones: every 25% and 100%
-                if (pct >= lastPrefillPct + 25 || pos === total) {
+                // Emit at start, every 25%, and 100%
+                if (!emittedProgress || pct >= lastPrefillPct + 25 || pos === total) {
+                  const isFirst = !emittedProgress;
+                  emittedProgress = true;
                   lastPrefillPct = pct;
-                  const progressChunk = {
-                    id: progressId,
-                    object: 'chat.completion.chunk',
-                    created: progressCreated,
-                    model: tier,
-                    choices: [{
-                      index: 0,
-                      delta: { reasoning_content: `prefill ${pos}/${total} (${pct}%)\n` },
-                      finish_reason: null,
-                    }],
-                  };
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
+
+                  if (useReasoning) {
+                    // reasoning_content path (Zed thinking UI)
+                    const progressChunk = {
+                      id: progressId,
+                      object: 'chat.completion.chunk',
+                      created: progressCreated,
+                      model: tier,
+                      choices: [{
+                        index: 0,
+                        delta: { reasoning_content: `prefill ${pos}/${total} (${pct}%)\n` },
+                        finish_reason: null,
+                      }],
+                    };
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
+                  } else {
+                    // content path (italic markdown, visible in chat)
+                    const filled = Math.round(pct / 10);
+                    const empty = 10 - filled;
+                    const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(empty);
+                    const label = isFirst
+                      ? `*Prefill ${bar} ${pct}%`
+                      : ` ${bar} ${pct}%`;
+                    const progressChunk = {
+                      id: progressId,
+                      object: 'chat.completion.chunk',
+                      created: progressCreated,
+                      model: tier,
+                      choices: [{
+                        index: 0,
+                        delta: isFirst
+                          ? { role: 'assistant', content: label }
+                          : { content: label },
+                        finish_reason: null,
+                      }],
+                    };
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
+                  }
                 }
               }
             }
@@ -697,9 +740,9 @@ export function createSSEProxyStream(
         );
       } finally {
         clearInterval(heartbeat);
-        // Emit usage/debug summary as reasoning_content before closing
         const elapsed = Date.now() - streamStart;
-        if (dataEventCount > 0) {
+        // Emit usage/debug summary (reasoning_content when enabled)
+        if (dataEventCount > 0 && useReasoning) {
           const usageChunk = {
             id: progressId,
             object: 'chat.completion.chunk',

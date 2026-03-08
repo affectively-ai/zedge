@@ -38,6 +38,13 @@ export interface ZedgeConfig {
   dashRelayApiKey?: string;
   /** UCAN token for relay authorization */
   ucanToken?: string;
+  /**
+   * Emit debug/prefill info via `reasoning_content` (Zed thinking UI).
+   * Disabled by default: Zed's openai_compatible provider ignores
+   * reasoning_content and hangs (https://github.com/zed-industries/zed/issues/46794).
+   * Enable when Zed ships the fix.
+   */
+  reasoningContent?: boolean;
 }
 
 const DEFAULT_EDGEWORK_CONFIG: EdgeworkConfig = {

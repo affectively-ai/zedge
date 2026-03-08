@@ -388,23 +388,6 @@ async function handleRequest(req: Request): Promise<Response> {
 
       const sseStream = new ReadableStream<Uint8Array>({
         async start(controller) {
-          // Emit inference chain debug info as reasoning_content (Zed thinking UI)
-          const chainInfo = result.attempts
-            .map((a) => `${a.tier}:${a.status}(${a.ms}ms)`)
-            .join(' → ');
-          const debugChunk = {
-            id,
-            object: 'chat.completion.chunk',
-            created,
-            model,
-            choices: [{
-              index: 0,
-              delta: { reasoning_content: `[${chainInfo}] ${tokens.length} words\n` },
-              finish_reason: null,
-            }],
-          };
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(debugChunk)}\n\n`));
-
           // Emit each token as a separate SSE delta chunk
           for (let i = 0; i < tokens.length; i++) {
             const chunk = {
