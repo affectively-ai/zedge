@@ -91,6 +91,33 @@ const CLOUD_RUN_COORDINATORS: Record<string, string> = {
 
 export type InferenceTier = 'mesh' | 'edge' | 'cloudrun' | 'wasm' | 'echo';
 
+/**
+ * Speculative warm-up: fire /health pings to ALL Cloud Run coordinators
+ * whenever any inference request arrives. This wakes coordinators from
+ * cold sleep (min-instances=0) so they're ready for subsequent requests.
+ * Fire-and-forget — never blocks the primary request.
+ */
+let lastWarmupTime = 0;
+const WARMUP_INTERVAL_MS = 60_000; // At most once per minute
+
+function speculativeWarmup(excludeModel?: string): void {
+  const now = Date.now();
+  if (now - lastWarmupTime < WARMUP_INTERVAL_MS) return;
+  lastWarmupTime = now;
+
+  for (const [model, url] of Object.entries(CLOUD_RUN_COORDINATORS)) {
+    if (model === excludeModel) continue; // Already being hit by the real request
+    fetch(`${url}/health`, { signal: AbortSignal.timeout(10_000) })
+      .then((r) => {
+        logInference(`[warmup] ${model} → ${r.status} (${Date.now() - now}ms)`);
+      })
+      .catch((err) => {
+        logInference(`[warmup] ${model} → ${err instanceof Error ? err.message : 'error'} (${Date.now() - now}ms)`);
+      });
+  }
+  logInference(`[warmup] pinged ${Object.keys(CLOUD_RUN_COORDINATORS).length - (excludeModel ? 1 : 0)} coordinators`);
+}
+
 export interface TierAttempt {
   tier: InferenceTier;
   status: 'ok' | 'timeout' | 'error' | 'skipped' | 'http_error';
@@ -803,6 +830,9 @@ export async function infer(
   const lastMsg = request.messages[request.messages.length - 1];
   const msgPreview = typeof lastMsg?.content === 'string' ? lastMsg.content.slice(0, 80) : JSON.stringify(lastMsg?.content)?.slice(0, 80) ?? '';
   logInference(`--- REQUEST model=${request.model} stream=${request.stream ?? false} msgs=${request.messages.length} last="${msgPreview}"`);
+
+  // Speculatively warm all other coordinators while this request is in flight
+  speculativeWarmup(request.model);
 
   function attempt(
     tier: InferenceTier,
