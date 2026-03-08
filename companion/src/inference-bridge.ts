@@ -594,6 +594,12 @@ export function createSSEProxyStream(
       let sawDone = false;
       const streamStart = Date.now();
       let lineBuf = '';
+      // Track prefill progress to emit as visible content in Zed.
+      // We emit a status line during prefill, then a separator before real tokens.
+      let emittedPrefillHeader = false;
+      let lastPrefillPct = -1;
+      const progressId = `chatcmpl-progress-${Date.now()}`;
+      const progressCreated = Math.floor(Date.now() / 1000);
 
       try {
         const reader = upstreamBody.getReader();
@@ -620,13 +626,64 @@ export function createSSEProxyStream(
               } else if (!firstDataLogged) {
                 firstDataLogged = true;
                 logInference(`[sse-proxy] tier=${tier} first-data: ${payload.slice(0, 200)}`);
+                // If we emitted prefill progress, insert a newline separator
+                // before the real response content starts.
+                if (emittedPrefillHeader) {
+                  const sepChunk = {
+                    id: progressId,
+                    object: 'chat.completion.chunk',
+                    created: progressCreated,
+                    model: tier,
+                    choices: [{
+                      index: 0,
+                      delta: { content: '\n\n' },
+                      finish_reason: null,
+                    }],
+                  };
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(sepChunk)}\n\n`));
+                }
               }
               controller.enqueue(encoder.encode(line + '\n'));
             } else if (line === '') {
               controller.enqueue(encoder.encode('\n'));
             } else if (line.startsWith(':')) {
-              // Log upstream comments (heartbeat, prefill) but don't forward
+              // Log upstream comments (heartbeat, prefill) but don't forward raw
               logInference(`[sse-proxy] tier=${tier} upstream: ${line.slice(0, 100)}`);
+
+              // Convert prefill progress comments into visible SSE data events.
+              // Format: `: prefill 8/291` → emit as content so Zed shows progress.
+              const prefillMatch = line.match(/^: prefill (\d+)\/(\d+)/);
+              if (prefillMatch && !firstDataLogged) {
+                const pos = parseInt(prefillMatch[1], 10);
+                const total = parseInt(prefillMatch[2], 10);
+                const pct = Math.floor((pos / total) * 100);
+                // Emit at milestones: 0%, every 25%, and 100%
+                if (!emittedPrefillHeader || pct >= lastPrefillPct + 25 || pos === total) {
+                  lastPrefillPct = pct;
+                  const filled = Math.round(pct / 10);
+                  const empty = 10 - filled;
+                  const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(empty);
+                  const isFirst = !emittedPrefillHeader;
+                  const label = isFirst
+                    ? `*Prefill ${bar} ${pct}%*`
+                    : ` ${bar} ${pct}%`;
+                  emittedPrefillHeader = true;
+                  const progressChunk = {
+                    id: progressId,
+                    object: 'chat.completion.chunk',
+                    created: progressCreated,
+                    model: tier,
+                    choices: [{
+                      index: 0,
+                      delta: isFirst
+                        ? { role: 'assistant', content: label }
+                        : { content: label },
+                      finish_reason: null,
+                    }],
+                  };
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
+                }
+              }
             }
           }
         }
