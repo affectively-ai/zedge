@@ -721,8 +721,8 @@ export function createSSEProxyStream(
                 const pos = parseInt(prefillMatch[1], 10);
                 const total = parseInt(prefillMatch[2], 10);
                 const pct = Math.floor((pos / total) * 100);
-                // Emit at 25%, 50%, 75%, 100% — skip 0% (no useful info)
-                if (pct >= 25 && (!emittedProgress || pct >= lastPrefillPct + 25 || pos === total)) {
+                // Emit at start, every 25%, and 100%
+                if (!emittedProgress || pct >= lastPrefillPct + 25 || pos === total) {
                   const isFirst = !emittedProgress;
                   emittedProgress = true;
                   lastPrefillPct = pct;
