@@ -11,11 +11,24 @@
  * All inference is WASM/coordinator-based, zero paid AI.
  */
 
-import {
-  getApiBaseUrl,
-  getAuthHeaders,
-  getZedgeConfig,
-} from './config';
+import { getApiBaseUrl, getAuthHeaders, getZedgeConfig } from './config';
+import { appendFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
+
+// --- Inference log file ---
+// import.meta.dir = .../companion/src → go up twice to companion/
+const LOG_DIR = join(import.meta.dir, '..', '..', '.edgework');
+try {
+  mkdirSync(LOG_DIR, { recursive: true });
+} catch {}
+const LOG_FILE = join(LOG_DIR, 'inference.log');
+
+function logInference(line: string): void {
+  const ts = new Date().toISOString();
+  try {
+    appendFileSync(LOG_FILE, `[${ts}] ${line}\n`);
+  } catch {}
+}
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -43,7 +56,11 @@ export interface ChatCompletionResponse {
   created: number;
   model: string;
   choices: CompletionChoice[];
-  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
 
 export interface ModelInfo {
@@ -54,21 +71,57 @@ export interface ModelInfo {
 
 // Cloud Run coordinator URLs for direct access (bypasses CF 120s timeout)
 const CLOUD_RUN_COORDINATORS: Record<string, string> = {
-  'tinyllama-1.1b': 'https://tinyllama-1-1b-coordinator-jqfuhpqhja-uc.a.run.app',
-  'mistral-7b': 'https://mistral-7b-coordinator-jqfuhpqhja-uc.a.run.app',
-  'qwen-2.5-coder-7b': 'https://qwen-edit-coordinator-jqfuhpqhja-uc.a.run.app',
-  'gemma3-4b-it': 'https://gemma3-4b-it-coordinator-jqfuhpqhja-uc.a.run.app',
-  'gemma3-1b-it': 'https://gemma3-1b-it-coordinator-jqfuhpqhja-uc.a.run.app',
-  'glm-4-9b': 'https://glm-4-9b-coordinator-jqfuhpqhja-uc.a.run.app',
-  'deepseek-r1': 'https://deepseek-r1-coordinator-jqfuhpqhja-uc.a.run.app',
-  'lfm2.5-1.2b-glm-4.7-flash-thinking': 'https://lfm-1-2b-coordinator-jqfuhpqhja-uc.a.run.app',
+  'tinyllama-1.1b':
+    'https://inference-tinyllama-coordinator-6ptd7xm6fq-uc.a.run.app',
+  'mistral-7b':
+    'https://inference-7b-coordinator-6ptd7xm6fq-uc.a.run.app',
+  'qwen-2.5-coder-7b':
+    'https://inference-qwen-coordinator-6ptd7xm6fq-uc.a.run.app',
+  'gemma3-4b-it':
+    'https://inference-gemma3-4b-it-coordinator-6ptd7xm6fq-uc.a.run.app',
+  'gemma3-1b-it':
+    'https://inference-gemma3-1b-it-coordinator-6ptd7xm6fq-uc.a.run.app',
+  'glm-4-9b':
+    'https://inference-glm-4-9b-coordinator-6ptd7xm6fq-uc.a.run.app',
+  'personaplex-7b':
+    'https://inference-personaplex-7b-coordinator-6ptd7xm6fq-uc.a.run.app',
+  'lfm2.5-1.2b-glm-4.7-flash-thinking':
+    'https://inference-lfm2-5-coordinator-6ptd7xm6fq-uc.a.run.app',
 };
 
 export type InferenceTier = 'mesh' | 'edge' | 'cloudrun' | 'wasm' | 'echo';
 
+export interface TierAttempt {
+  tier: InferenceTier;
+  status: 'ok' | 'timeout' | 'error' | 'skipped' | 'http_error';
+  ms: number;
+  detail?: string;
+}
+
 export interface TierResult {
   tier: InferenceTier;
   response: Response;
+  /** Upstream X-* debug/diagnostic headers from edge-workers */
+  upstreamHeaders: Record<string, string>;
+  /** Every tier attempted, in order, with timing + failure reason */
+  attempts: TierAttempt[];
+}
+
+/**
+ * Extract all X-* headers from an upstream response.
+ * These are debug/diagnostic headers emitted by edge-workers
+ * (model selection, timing, fallback, billing, routing, etc.)
+ */
+export function extractUpstreamDebugHeaders(
+  response: Response
+): Record<string, string> {
+  const headers: Record<string, string> = {};
+  response.headers.forEach((value, key) => {
+    if (key.toLowerCase().startsWith('x-')) {
+      headers[key] = value;
+    }
+  });
+  return headers;
 }
 
 /**
@@ -113,17 +166,27 @@ async function tryEdgeCoordinator(
   signal?: AbortSignal
 ): Promise<Response> {
   const baseUrl = getApiBaseUrl();
+  const authHeaders = getAuthHeaders();
   const headers = {
     'Content-Type': 'application/json',
-    ...getAuthHeaders(),
+    ...authHeaders,
   };
 
-  return fetch(`${baseUrl}/v1/chat/completions`, {
+  logInference(`[edge] → ${baseUrl}/v1/chat/completions model=${request.model} headers=${JSON.stringify(Object.keys(authHeaders))}`);
+
+  const resp = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers,
     body: JSON.stringify(request),
     signal,
   });
+
+  // Log all response headers for debugging
+  const respHeaders: Record<string, string> = {};
+  resp.headers.forEach((v, k) => { respHeaders[k] = v; });
+  logInference(`[edge] ← ${resp.status} ${resp.statusText} headers=${JSON.stringify(respHeaders)}`);
+
+  return resp;
 }
 
 /**
@@ -139,12 +202,20 @@ async function tryCloudRunCoordinator(
     throw new Error(`No Cloud Run coordinator for model: ${request.model}`);
   }
 
-  return fetch(`${coordinatorUrl}/v1/chat/completions`, {
+  logInference(`[cloudrun] → ${coordinatorUrl}/v1/chat/completions model=${request.model}`);
+
+  const resp = await fetch(`${coordinatorUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
     signal,
   });
+
+  const respHeaders: Record<string, string> = {};
+  resp.headers.forEach((v, k) => { respHeaders[k] = v; });
+  logInference(`[cloudrun] ← ${resp.status} ${resp.statusText} headers=${JSON.stringify(respHeaders)}`);
+
+  return resp;
 }
 
 /**
@@ -293,7 +364,8 @@ class LocalInferenceEngine {
       current = next;
     }
 
-    return tokens.join(' ')
+    return tokens
+      .join(' ')
       .replace(/ \./g, '.')
       .replace(/ ,/g, ',')
       .replace(/ !/g, '!')
@@ -316,7 +388,9 @@ class LocalInferenceEngine {
     const entries = Array.from(candidates.entries());
 
     // Apply temperature: higher = more random, lower = more deterministic
-    const weights = entries.map(([, w]) => Math.pow(w, 1 / Math.max(0.1, temperature)));
+    const weights = entries.map(([, w]) =>
+      Math.pow(w, 1 / Math.max(0.1, temperature))
+    );
     const totalWeight = weights.reduce((a, b) => a + b, 0);
 
     let rand = Math.random() * totalWeight;
@@ -329,6 +403,32 @@ class LocalInferenceEngine {
 }
 
 const localEngine = new LocalInferenceEngine();
+
+/**
+ * Race multiple promises, return the first non-null result.
+ * If all resolve to null, returns null.
+ */
+async function raceForFirst<T>(
+  promises: Promise<T | null>[]
+): Promise<T | null> {
+  // Wrap each promise so null results don't "win" the race
+  return new Promise<T | null>((resolve) => {
+    let remaining = promises.length;
+    for (const p of promises) {
+      p.then((result) => {
+        if (result !== null) {
+          resolve(result);
+        } else {
+          remaining--;
+          if (remaining === 0) resolve(null);
+        }
+      }).catch(() => {
+        remaining--;
+        if (remaining === 0) resolve(null);
+      });
+    }
+  });
+}
 
 /**
  * Local WASM inference — generates a real response using on-device model
@@ -377,7 +477,9 @@ async function tryWasmFallback(
  */
 function echoFallback(request: ChatCompletionRequest): Response {
   const lastMessage = request.messages[request.messages.length - 1];
-  const content = `I received your message. All inference tiers are currently unavailable. Your message was: "${lastMessage?.content?.slice(0, 200) ?? ''}"`;
+  const content = `I received your message. All inference tiers are currently unavailable. Your message was: "${
+    lastMessage?.content?.slice(0, 200) ?? ''
+  }"`;
 
   const response: ChatCompletionResponse = {
     id: `chatcmpl-echo-${Date.now()}`,
@@ -409,18 +511,37 @@ function echoFallback(request: ChatCompletionRequest): Response {
  */
 export function createSSEProxyStream(
   upstreamBody: ReadableStream<Uint8Array> | null,
-  tier: InferenceTier
+  tier: InferenceTier,
+  upstreamHeaders: Record<string, string> = {},
+  attempts?: TierAttempt[]
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       // Send initial comment with tier info
-      controller.enqueue(
-        encoder.encode(`: zedge-tier=${tier}\n\n`)
-      );
+      controller.enqueue(encoder.encode(`: zedge-tier=${tier}\n\n`));
+
+      // Emit upstream debug headers as SSE comments so streaming clients can read them
+      for (const [key, value] of Object.entries(upstreamHeaders)) {
+        controller.enqueue(encoder.encode(`: ${key}=${value}\n\n`));
+      }
+
+      // Emit tier attempt chain as SSE comments for debugging
+      if (attempts?.length) {
+        for (const a of attempts) {
+          const detail = a.detail ? ` [${a.detail.slice(0, 60)}]` : '';
+          controller.enqueue(
+            encoder.encode(
+              `: attempt ${a.tier}: ${a.status} (${a.ms}ms)${detail}\n\n`
+            )
+          );
+        }
+      }
 
       if (!upstreamBody) {
+        logInference(`[sse-proxy] tier=${tier} no upstream body`);
         controller.enqueue(
           encoder.encode(
             `data: ${JSON.stringify({ error: 'No response body' })}\n\n`
@@ -440,22 +561,50 @@ export function createSSEProxyStream(
         }
       }, 15_000);
 
+      // SSE stream content logging
+      let totalBytes = 0;
+      let dataEventCount = 0;
+      let firstDataLogged = false;
+      let sawDone = false;
+      const streamStart = Date.now();
+
       try {
         const reader = upstreamBody.getReader();
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           controller.enqueue(value);
+
+          // Log stream content for diagnostics
+          totalBytes += value.byteLength;
+          const text = decoder.decode(value, { stream: true });
+
+          // Count data events and log first few for format diagnostics
+          const lines = text.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              dataEventCount++;
+              const payload = line.slice(6).trim();
+              if (payload === '[DONE]') {
+                sawDone = true;
+              } else if (!firstDataLogged) {
+                // Log the first data event to diagnose format issues
+                firstDataLogged = true;
+                logInference(`[sse-proxy] tier=${tier} first-data: ${payload.slice(0, 200)}`);
+              }
+            }
+          }
         }
       } catch (err) {
         // Send error event instead of silently dropping
         const errMsg = err instanceof Error ? err.message : 'Stream error';
+        logInference(`[sse-proxy] tier=${tier} stream-error: ${errMsg}`);
         controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ error: errMsg })}\n\n`
-          )
+          encoder.encode(`data: ${JSON.stringify({ error: errMsg })}\n\n`)
         );
       } finally {
+        const elapsed = Date.now() - streamStart;
+        logInference(`[sse-proxy] tier=${tier} stream-end: ${totalBytes}B ${dataEventCount} data-events sawDone=${sawDone} ${elapsed}ms`);
         clearInterval(heartbeat);
         try {
           controller.close();
@@ -472,64 +621,160 @@ export function createSSEProxyStream(
  *
  * Tier order:
  * 1. LAN Mesh (if running and peers available)
- * 2. Edge Coordinator (CF Workers, 15s timeout)
- * 3. Cloud Run (direct, 120s timeout, bypasses CF limit)
- * 4. Local WASM (on-device n-gram model)
- * 5. Echo fallback (guaranteed)
+ * 2. Edge + Cloud Run RACED (first 200 wins, eliminates 30s edge timeout waste)
+ * 3. Local WASM (on-device n-gram model)
+ * 4. Echo fallback (guaranteed)
  */
 export async function infer(
   request: ChatCompletionRequest
 ): Promise<TierResult> {
   const config = getZedgeConfig();
+  const attempts: TierAttempt[] = [];
+  const lastMsg = request.messages[request.messages.length - 1];
+  const msgPreview = typeof lastMsg?.content === 'string' ? lastMsg.content.slice(0, 80) : JSON.stringify(lastMsg?.content)?.slice(0, 80) ?? '';
+  logInference(`--- REQUEST model=${request.model} stream=${request.stream ?? false} msgs=${request.messages.length} last="${msgPreview}"`);
+
+  function attempt(
+    tier: InferenceTier,
+    startMs: number,
+    status: TierAttempt['status'],
+    detail?: string
+  ): void {
+    attempts.push({ tier, status, ms: Date.now() - startMs, detail });
+  }
 
   // Tier 1: LAN Mesh
-  try {
-    const meshResponse = await tryMeshInference(request);
-    if (meshResponse && meshResponse.ok) {
-      return { tier: 'mesh', response: meshResponse };
-    }
-  } catch {
-    // Mesh unavailable, fall through
-  }
-
-  // Tier 2: Edge Coordinator
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000);
-    const response = await tryEdgeCoordinator(request, controller.signal);
-    clearTimeout(timeout);
-    if (response.ok) {
-      return { tier: 'edge', response };
-    }
-  } catch {
-    // Edge coordinator unavailable, fall through
-  }
-
-  // Tier 3: Cloud Run Coordinator (direct, bypasses CF 120s timeout)
-  if (config.cloudRunDirect && CLOUD_RUN_COORDINATORS[request.model]) {
+  {
+    const t0 = Date.now();
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 120_000);
-      const response = await tryCloudRunCoordinator(request, controller.signal);
-      clearTimeout(timeout);
-      if (response.ok) {
-        return { tier: 'cloudrun', response };
+      const meshResponse = await tryMeshInference(request);
+      if (meshResponse && meshResponse.ok) {
+        attempt('mesh', t0, 'ok');
+        logInference(`model=${request.model} tier=mesh status=ok ms=${Date.now() - t0}`);
+        return {
+          tier: 'mesh',
+          response: meshResponse,
+          upstreamHeaders: extractUpstreamDebugHeaders(meshResponse),
+          attempts,
+        };
       }
-    } catch {
-      // Cloud Run unavailable, fall through
+      attempt('mesh', t0, 'skipped', 'no peers or not running');
+    } catch (err) {
+      attempt('mesh', t0, 'error', String(err));
     }
+  }
+
+  // Tier 2: Race Edge + Cloud Run in parallel
+  // Edge consistently takes 30s to timeout — racing both eliminates the waste.
+  // First successful (200 OK) response wins; loser is aborted.
+  const canCloudRun = config.cloudRunDirect && !!CLOUD_RUN_COORDINATORS[request.model];
+  {
+    const t0 = Date.now();
+    const edgeAbort = new AbortController();
+    const cloudRunAbort = new AbortController();
+
+    // Edge attempt: 150s timeout (paid CF plan, no wall-clock limit)
+    const edgeTimeout = setTimeout(() => edgeAbort.abort(), 150_000);
+    const edgePromise = tryEdgeCoordinator(request, edgeAbort.signal)
+      .then((response): { tier: InferenceTier; response: Response } | null => {
+        if (response.ok) return { tier: 'edge', response };
+        attempt('edge', t0, 'http_error', `${response.status} ${response.statusText}`);
+        return null;
+      })
+      .catch((err): null => {
+        const isTimeout = err instanceof DOMException && err.name === 'AbortError';
+        attempt('edge', t0, isTimeout ? 'timeout' : 'error', String(err));
+        return null;
+      });
+
+    // Cloud Run attempt (only if available): 15 min timeout for cold starts
+    let cloudRunPromise: Promise<{ tier: InferenceTier; response: Response } | null>;
+    if (canCloudRun) {
+      const cloudRunTimeout = setTimeout(() => cloudRunAbort.abort(), 900_000);
+      cloudRunPromise = tryCloudRunCoordinator(request, cloudRunAbort.signal)
+        .then((response): { tier: InferenceTier; response: Response } | null => {
+          if (response.ok) return { tier: 'cloudrun', response };
+          attempt('cloudrun', t0, 'http_error', `${response.status} ${response.statusText}`);
+          return null;
+        })
+        .catch((err): null => {
+          const isTimeout = err instanceof DOMException && err.name === 'AbortError';
+          attempt('cloudrun', t0, isTimeout ? 'timeout' : 'error', String(err));
+          return null;
+        })
+        .finally(() => clearTimeout(cloudRunTimeout));
+    } else {
+      attempts.push({
+        tier: 'cloudrun',
+        status: 'skipped',
+        ms: 0,
+        detail: !config.cloudRunDirect
+          ? 'cloudRunDirect disabled'
+          : `no coordinator URL for ${request.model}`,
+      });
+      cloudRunPromise = Promise.resolve(null);
+    }
+
+    // Race: first non-null result wins
+    const winner = await raceForFirst([edgePromise, cloudRunPromise]);
+    clearTimeout(edgeTimeout);
+
+    if (winner) {
+      // Abort the loser
+      if (winner.tier === 'edge') {
+        cloudRunAbort.abort();
+      } else {
+        edgeAbort.abort();
+      }
+      attempt(winner.tier, t0, 'ok');
+      const xHeaders = extractUpstreamDebugHeaders(winner.response);
+      logInference(`model=${request.model} tier=${winner.tier} status=ok ms=${Date.now() - t0} x-headers=${JSON.stringify(xHeaders)}`);
+      return {
+        tier: winner.tier,
+        response: winner.response,
+        upstreamHeaders: xHeaders,
+        attempts,
+      };
+    }
+
+    // Both failed — log and continue to WASM
+    logInference(`model=${request.model} edge+cloudrun race: both failed, falling to WASM`);
   }
 
   // Tier 4: Local WASM inference (real on-device generation)
-  try {
-    const response = await tryWasmFallback(request);
-    return { tier: 'wasm', response };
-  } catch {
-    // WASM failed (shouldn't happen), fall through
+  {
+    const t0 = Date.now();
+    try {
+      const response = await tryWasmFallback(request);
+      attempt('wasm', t0, 'ok');
+
+      // Log full chain when falling to WASM — this is always interesting
+      const chainStr = attempts.map((a) => `${a.tier}:${a.status}(${a.ms}ms)${a.detail ? '[' + a.detail.slice(0, 40) + ']' : ''}`).join(' → ');
+      console.warn(`[zedge] fell to WASM for model=${request.model} | chain: ${chainStr}`);
+      logInference(`model=${request.model} tier=wasm FALLBACK chain: ${chainStr}`);
+
+      return {
+        tier: 'wasm',
+        response,
+        upstreamHeaders: {},
+        attempts,
+      };
+    } catch (err) {
+      attempt('wasm', t0, 'error', String(err));
+    }
   }
 
   // Tier 5: Echo fallback (guaranteed response)
-  return { tier: 'echo', response: echoFallback(request) };
+  attempts.push({ tier: 'echo', status: 'ok', ms: 0 });
+  const echoChain = attempts.map((a) => `${a.tier}:${a.status}(${a.ms}ms)`).join(' → ');
+  console.error(`[zedge] fell to ECHO for model=${request.model} | chain: ${echoChain}`);
+  logInference(`model=${request.model} tier=echo FALLBACK chain: ${echoChain}`);
+  return {
+    tier: 'echo',
+    response: echoFallback(request),
+    upstreamHeaders: {},
+    attempts,
+  };
 }
 
 /**
