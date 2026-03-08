@@ -254,15 +254,76 @@ async function handleRequest(req: Request): Promise<Response> {
 
     const result = await infer(request);
 
-    // SSE streaming: wrap with heartbeat proxy
+    // SSE streaming: wrap with heartbeat proxy or convert JSON to SSE
     const contentType =
       result.response.headers.get('content-type') ?? 'application/json';
-    if (contentType.includes('text/event-stream') || request.stream) {
+    const upstreamIsSSE = contentType.includes('text/event-stream');
+
+    if (upstreamIsSSE) {
+      // Upstream already SSE — proxy through with heartbeat
       const proxyStream = createSSEProxyStream(
         result.response.body,
         result.tier
       );
       return new Response(proxyStream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+          'Access-Control-Allow-Origin': '*',
+          'X-Zedge-Tier': result.tier,
+        },
+      });
+    }
+
+    if (request.stream) {
+      // Upstream returned JSON (WASM/echo) but client asked for streaming.
+      // Convert the non-streaming response into proper SSE format.
+      const data = await result.response.json();
+      const content = data?.choices?.[0]?.message?.content ?? '';
+
+      // Build streaming-format chunks: one delta per chunk + [DONE]
+      const encoder = new TextEncoder();
+      const sseStream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          // Tier comment
+          controller.enqueue(encoder.encode(`: zedge-tier=${result.tier}\n\n`));
+
+          // Single delta chunk with full content
+          const chunk = {
+            id: data.id ?? `chatcmpl-${Date.now()}`,
+            object: 'chat.completion.chunk',
+            created: data.created ?? Math.floor(Date.now() / 1000),
+            model: data.model ?? request.model,
+            choices: [{
+              index: 0,
+              delta: { role: 'assistant', content },
+              finish_reason: null,
+            }],
+          };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+
+          // Finish chunk
+          const finishChunk = {
+            id: data.id ?? `chatcmpl-${Date.now()}`,
+            object: 'chat.completion.chunk',
+            created: data.created ?? Math.floor(Date.now() / 1000),
+            model: data.model ?? request.model,
+            choices: [{
+              index: 0,
+              delta: {},
+              finish_reason: 'stop',
+            }],
+          };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(finishChunk)}\n\n`));
+
+          // Done sentinel
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+
+      return new Response(sseStream, {
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
