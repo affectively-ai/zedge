@@ -16,11 +16,14 @@
 
 import { infer } from './inference-bridge';
 import { getZedgeConfig } from './config';
-import type {
-  ChatCompletionRequest,
-  ChatMessage,
-} from './inference-bridge';
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'fs';
+import type { ChatCompletionRequest, ChatMessage } from './inference-bridge';
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  readdirSync,
+  statSync,
+} from 'fs';
 import { join, relative } from 'path';
 import { execSync } from 'child_process';
 
@@ -75,14 +78,20 @@ const TOOLS = [
     name: 'read_file',
     description: 'Read the contents of a file in the workspace',
     parameters: {
-      path: { type: 'string', description: 'Relative path from workspace root' },
+      path: {
+        type: 'string',
+        description: 'Relative path from workspace root',
+      },
     },
   },
   {
     name: 'write_file',
     description: 'Write content to a file in the workspace',
     parameters: {
-      path: { type: 'string', description: 'Relative path from workspace root' },
+      path: {
+        type: 'string',
+        description: 'Relative path from workspace root',
+      },
       content: { type: 'string', description: 'File content to write' },
     },
   },
@@ -118,7 +127,10 @@ const TOOLS = [
     description: 'Search for a pattern across workspace files',
     parameters: {
       pattern: { type: 'string', description: 'Regex pattern to search for' },
-      glob: { type: 'string', description: 'File glob to filter (e.g., "*.ts")' },
+      glob: {
+        type: 'string',
+        description: 'File glob to filter (e.g., "*.ts")',
+      },
     },
   },
   // --- ACP Agent 2.0 Tools (Phase 7) ---
@@ -126,7 +138,10 @@ const TOOLS = [
     name: 'deploy',
     description: 'Trigger ForgoCD deploy for the current workspace',
     parameters: {
-      project: { type: 'string', description: 'Project name to deploy (optional)' },
+      project: {
+        type: 'string',
+        description: 'Project name to deploy (optional)',
+      },
     },
   },
   {
@@ -288,7 +303,10 @@ export async function agentTurn(
 
     // Add tool results as a follow-up message
     const toolSummary = toolResults
-      .map((r) => `[${r.name}] ${r.success ? 'OK' : 'ERROR'}: ${r.output.slice(0, 500)}`)
+      .map(
+        (r) =>
+          `[${r.name}] ${r.success ? 'OK' : 'ERROR'}: ${r.output.slice(0, 500)}`
+      )
       .join('\n\n');
 
     session.conversationHistory.push({
@@ -341,9 +359,7 @@ export async function agentTurn(
 
 // --- Context Gathering ---
 
-async function gatherContext(
-  session: AgentSession
-): Promise<string> {
+async function gatherContext(session: AgentSession): Promise<string> {
   const parts: string[] = [];
   const now = Date.now();
   const CACHE_TTL = 30_000;
@@ -353,10 +369,7 @@ async function gatherContext(
     !session.contextCache.fileTree ||
     now - session.contextCache.fileTreeTimestamp > CACHE_TTL
   ) {
-    session.contextCache.fileTree = buildFileTree(
-      session.workspacePath,
-      3
-    );
+    session.contextCache.fileTree = buildFileTree(session.workspacePath, 3);
     session.contextCache.fileTreeTimestamp = now;
   }
   parts.push(`<file_tree>\n${session.contextCache.fileTree}\n</file_tree>`);
@@ -421,15 +434,16 @@ function buildFileTree(dir: string, maxDepth: number, depth = 0): string {
 
 // --- System Prompt ---
 
-function buildSystemPrompt(
-  session: AgentSession,
-  context: string
-): string {
+function buildSystemPrompt(session: AgentSession, context: string): string {
   const toolDefs = TOOLS.filter((t) => {
     // Filter tools based on capabilities
-    if (t.name === 'run_command' && session.capabilities.processExec.length === 0)
+    if (
+      t.name === 'run_command' &&
+      session.capabilities.processExec.length === 0
+    )
       return false;
-    if (t.name === 'write_file' && !session.capabilities.fileWrite) return false;
+    if (t.name === 'write_file' && !session.capabilities.fileWrite)
+      return false;
     if (
       (t.name === 'git_diff' || t.name === 'git_log') &&
       !session.capabilities.gitAccess
@@ -441,7 +455,9 @@ function buildSystemPrompt(
   const toolSection = toolDefs
     .map(
       (t) =>
-        `- ${t.name}: ${t.description}\n  Parameters: ${JSON.stringify(t.parameters)}`
+        `- ${t.name}: ${t.description}\n  Parameters: ${JSON.stringify(
+          t.parameters
+        )}`
     )
     .join('\n');
 
@@ -465,7 +481,9 @@ ${context}
 - Explain what you're doing and why
 - If a tool fails, try an alternative approach
 - Never modify files outside the workspace
-- For commands, only run: ${session.capabilities.processExec.join(', ') || 'none allowed'}`;
+- For commands, only run: ${
+    session.capabilities.processExec.join(', ') || 'none allowed'
+  }`;
 }
 
 // --- Tool Parsing & Execution ---
@@ -547,7 +565,9 @@ function executeTool(session: AgentSession, call: ToolCall): ToolResult {
           return {
             name,
             success: false,
-            output: `Command not permitted. Allowed patterns: ${session.capabilities.processExec.join(', ')}`,
+            output: `Command not permitted. Allowed patterns: ${session.capabilities.processExec.join(
+              ', '
+            )}`,
           };
         }
         const output = execSync(cmd, {
@@ -624,7 +644,9 @@ function executeTool(session: AgentSession, call: ToolCall): ToolResult {
           return {
             name,
             success: true,
-            output: `Deploy command initiated${project ? ` for ${project}` : ''}`,
+            output: `Deploy command initiated${
+              project ? ` for ${project}` : ''
+            }`,
           };
         }
       }
@@ -677,20 +699,18 @@ function executeTool(session: AgentSession, call: ToolCall): ToolResult {
         const filter = args.filter ? String(args.filter) : '';
         const filterArg = filter ? ` --grep "${filter}"` : '';
         try {
-          const output = execSync(
-            `bun test ${testPath}${filterArg} 2>&1`,
-            {
-              cwd: session.workspacePath,
-              encoding: 'utf-8',
-              timeout: 120_000,
-              maxBuffer: 2 * 1024 * 1024,
-            }
-          );
+          const output = execSync(`bun test ${testPath}${filterArg} 2>&1`, {
+            cwd: session.workspacePath,
+            encoding: 'utf-8',
+            timeout: 120_000,
+            maxBuffer: 2 * 1024 * 1024,
+          });
           return { name, success: true, output: output.slice(0, 10_000) };
         } catch (err) {
-          const output = err instanceof Error && 'stdout' in err
-            ? String((err as { stdout: string }).stdout).slice(0, 10_000)
-            : String(err);
+          const output =
+            err instanceof Error && 'stdout' in err
+              ? String((err as { stdout: string }).stdout).slice(0, 10_000)
+              : String(err);
           return { name, success: false, output };
         }
       }
@@ -710,7 +730,9 @@ function executeTool(session: AgentSession, call: ToolCall): ToolResult {
         return {
           name,
           success: true,
-          output: `Code review requested for ${String(args.path)}.\n\nFile content (first 5000 chars):\n${code}\n\n[AI review would use superinference consensus across multiple models]`,
+          output: `Code review requested for ${String(
+            args.path
+          )}.\n\nFile content (first 5000 chars):\n${code}\n\n[AI review would use superinference consensus across multiple models]`,
         };
       }
 
@@ -725,10 +747,16 @@ function executeTool(session: AgentSession, call: ToolCall): ToolResult {
         // Basic security pattern scan
         try {
           const patterns = [
-            'eval\\s*\\(', 'innerHTML\\s*=', 'dangerouslySetInnerHTML',
-            'exec\\s*\\(', 'child_process', '\\.env\\b',
-            'password\\s*=\\s*["\']', 'secret\\s*=\\s*["\']',
-            'api.key\\s*=\\s*["\']', 'token\\s*=\\s*["\']',
+            'eval\\s*\\(',
+            'innerHTML\\s*=',
+            'dangerouslySetInnerHTML',
+            'exec\\s*\\(',
+            'child_process',
+            '\\.env\\b',
+            'password\\s*=\\s*["\']',
+            'secret\\s*=\\s*["\']',
+            'api.key\\s*=\\s*["\']',
+            'token\\s*=\\s*["\']',
           ];
           const grepPattern = patterns.join('|');
           const output = execSync(
@@ -763,7 +791,11 @@ function executeTool(session: AgentSession, call: ToolCall): ToolResult {
           );
           return { name, success: true, output: output.slice(0, 10_000) };
         } catch {
-          return { name, success: true, output: 'No documentation matches found' };
+          return {
+            name,
+            success: true,
+            output: 'No documentation matches found',
+          };
         }
       }
 

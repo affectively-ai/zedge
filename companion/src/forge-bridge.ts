@@ -103,7 +103,9 @@ export class ForgeBridge {
         if (!target) {
           return {
             success: false,
-            error: `Project "${projectName}" not found. Available: ${projects.map((p) => p.name).join(', ')}`,
+            error: `Project "${projectName}" not found. Available: ${projects
+              .map((p) => p.name)
+              .join(', ')}`,
           };
         }
       } else {
@@ -131,7 +133,7 @@ export class ForgeBridge {
       this.appendLog(pid, 'info', `Deploy started for ${target.name}`);
 
       // Emit deploy-start event
-      this.events.push({
+      this.addEvent({
         type: 'deploy-start',
         projectName: target.name,
         timestamp: now,
@@ -139,20 +141,19 @@ export class ForgeBridge {
 
       // Execute build if configured
       if (target.config.buildCommand) {
-        this.appendLog(
-          pid,
-          'info',
-          `Building: ${target.config.buildCommand}`
-        );
+        this.appendLog(pid, 'info', `Building: ${target.config.buildCommand}`);
 
         const workDir = join(this.workspacePath, target.dir);
         try {
-          const buildProc = Bun.spawn(['sh', '-c', target.config.buildCommand], {
-            cwd: workDir,
-            stdout: 'pipe',
-            stderr: 'pipe',
-            env: process.env as Record<string, string>,
-          });
+          const buildProc = Bun.spawn(
+            ['sh', '-c', target.config.buildCommand],
+            {
+              cwd: workDir,
+              stdout: 'pipe',
+              stderr: 'pipe',
+              env: process.env as Record<string, string>,
+            }
+          );
 
           const exitCode = await buildProc.exited;
 
@@ -217,7 +218,7 @@ export class ForgeBridge {
         this.processes.set(target.name, { ...proc });
         this.appendLog(pid, 'info', `Process running on port ${proc.port}`);
 
-        this.events.push({
+        this.addEvent({
           type: 'deploy-success',
           projectName: target.name,
           timestamp: Date.now(),
@@ -263,7 +264,9 @@ export class ForgeBridge {
   async *getLogs(processId: string): AsyncIterable<string> {
     const entries = this.logs.get(processId) ?? [];
     for (const entry of entries) {
-      yield `[${new Date(entry.timestamp).toISOString()}] [${entry.level}] ${entry.message}`;
+      yield `[${new Date(entry.timestamp).toISOString()}] [${entry.level}] ${
+        entry.message
+      }`;
     }
   }
 
@@ -290,6 +293,9 @@ export class ForgeBridge {
     return this.events.slice(-50);
   }
 
+  private static readonly MAX_LOG_ENTRIES = 500;
+  private static readonly MAX_EVENTS = 200;
+
   private appendLog(
     processId: string,
     level: ForgeLogEntry['level'],
@@ -297,6 +303,16 @@ export class ForgeBridge {
   ): void {
     const entries = this.logs.get(processId) ?? [];
     entries.push({ timestamp: Date.now(), level, message });
+    if (entries.length > ForgeBridge.MAX_LOG_ENTRIES) {
+      entries.splice(0, entries.length - ForgeBridge.MAX_LOG_ENTRIES);
+    }
     this.logs.set(processId, entries);
+  }
+
+  private addEvent(event: ForgoDeployEvent): void {
+    this.events.push(event);
+    if (this.events.length > ForgeBridge.MAX_EVENTS) {
+      this.events.splice(0, this.events.length - ForgeBridge.MAX_EVENTS);
+    }
   }
 }

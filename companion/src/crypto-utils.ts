@@ -6,7 +6,13 @@
  * - CrdtEncryptionProvider (encrypted CRDT updates)
  */
 
-import { createHash, createHmac, randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  createCipheriv,
+  createDecipheriv,
+} from 'node:crypto';
 
 export function sha256(data: Uint8Array | string): string {
   return createHash('sha256').update(data).digest('hex');
@@ -39,6 +45,9 @@ export function decryptAes256Gcm(
 ): Uint8Array {
   const decipher = createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(authTag);
-  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  const decrypted = Buffer.concat([
+    decipher.update(ciphertext),
+    decipher.final(),
+  ]);
   return new Uint8Array(decrypted);
 }

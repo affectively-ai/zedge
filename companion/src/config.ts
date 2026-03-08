@@ -86,9 +86,7 @@ export function getZedgeConfig(): ZedgeConfig {
   return readJsonFile(ZEDGE_CONFIG_FILE, DEFAULT_ZEDGE_CONFIG);
 }
 
-export function saveZedgeConfig(
-  config: Partial<ZedgeConfig>
-): ZedgeConfig {
+export function saveZedgeConfig(config: Partial<ZedgeConfig>): ZedgeConfig {
   const current = getZedgeConfig();
   const updated = { ...current, ...config };
   writeJsonFile(ZEDGE_CONFIG_FILE, updated);
@@ -96,6 +94,9 @@ export function saveZedgeConfig(
 }
 
 export function getApiKey(): string | null {
+  // Prefer env var (matches .env.local EDGEWORK_API_TOKEN)
+  const envKey = process.env.EDGEWORK_API_TOKEN;
+  if (envKey) return envKey;
   try {
     if (!existsSync(API_KEY_FILE)) return null;
     return readFileSync(API_KEY_FILE, 'utf-8').trim();
@@ -110,6 +111,7 @@ export function getAuthHeaders(): Record<string, string> {
     return {
       Authorization: `Bearer ${apiKey}`,
       'X-API-Key': apiKey,
+      'X-Subscription-Tier': 'admin',
     };
   }
   return {};

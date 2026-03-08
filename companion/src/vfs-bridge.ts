@@ -11,9 +11,21 @@
  */
 
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync } from 'node:fs';
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  readdirSync,
+  statSync,
+  mkdirSync,
+} from 'node:fs';
 import { join, relative } from 'node:path';
-import { sha256, hmacSha256, encryptAes256Gcm, decryptAes256Gcm } from './crypto-utils';
+import {
+  sha256,
+  hmacSha256,
+  encryptAes256Gcm,
+  decryptAes256Gcm,
+} from './crypto-utils';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,6 +83,7 @@ export interface VfsBlobResponse {
 
 export class VfsBridge {
   private mounts = new Map<string, VfsMount>();
+  private static readonly MAX_CHANGES = 5_000;
   private changes: VfsChange[] = [];
   private peerId: string;
 
@@ -135,14 +148,19 @@ export class VfsBridge {
       fileCount: mount.files.size,
       peerCount: mount.peers.size,
       lastSync: mount.mountedAt,
-      pendingChanges: this.changes.filter((c) => c.peerId === this.peerId).length,
+      pendingChanges: this.changes.filter((c) => c.peerId === this.peerId)
+        .length,
     };
   }
 
   /**
    * Record a file change (from local editor or peer).
    */
-  recordChange(mountId: string, path: string, type: VfsChange['type']): VfsChange | null {
+  recordChange(
+    mountId: string,
+    path: string,
+    type: VfsChange['type']
+  ): VfsChange | null {
     const mount = this.mounts.get(mountId);
     if (!mount) return null;
 
@@ -173,6 +191,9 @@ export class VfsBridge {
     };
 
     this.changes.push(change);
+    if (this.changes.length > VfsBridge.MAX_CHANGES) {
+      this.changes.splice(0, this.changes.length - VfsBridge.MAX_CHANGES);
+    }
     return change;
   }
 
@@ -188,7 +209,10 @@ export class VfsBridge {
 
     const content = readFileSync(fullPath);
     const hash = sha256(content);
-    const { ciphertext, iv, authTag } = encryptAes256Gcm(mount.encryptionKey, content);
+    const { ciphertext, iv, authTag } = encryptAes256Gcm(
+      mount.encryptionKey,
+      content
+    );
 
     // Pack: iv (12) + authTag (16) + ciphertext
     const packed = new Uint8Array(12 + 16 + ciphertext.length);
@@ -218,7 +242,12 @@ export class VfsBridge {
     const ciphertext = blob.content.subarray(28);
 
     try {
-      const plaintext = decryptAes256Gcm(mount.encryptionKey, ciphertext, iv, authTag);
+      const plaintext = decryptAes256Gcm(
+        mount.encryptionKey,
+        ciphertext,
+        iv,
+        authTag
+      );
       const fullPath = join(mount.repoPath, path);
       const dir = fullPath.replace(/\/[^/]+$/, '');
       mkdirSync(dir, { recursive: true });
@@ -279,7 +308,11 @@ export class VfsBridge {
     try {
       const entries = readdirSync(currentDir, { withFileTypes: true });
       for (const entry of entries) {
-        if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') {
+        if (
+          entry.name.startsWith('.') ||
+          entry.name === 'node_modules' ||
+          entry.name === 'dist'
+        ) {
           continue;
         }
         const fullPath = join(currentDir, entry.name);

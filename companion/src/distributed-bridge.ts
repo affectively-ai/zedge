@@ -93,7 +93,9 @@ async function loadWasmClient(
     );
 
     if (typeof wasmModule.DistributedClient === 'function') {
-      const ClientClass = wasmModule.DistributedClient as unknown as new (config: string) => WasmDistributedClient;
+      const ClientClass = wasmModule.DistributedClient as unknown as new (
+        config: string
+      ) => WasmDistributedClient;
       wasmClient = new ClientClass(JSON.stringify(config));
       console.log('[zedge:distributed] WASM DistributedClient loaded');
       return wasmClient;
@@ -294,11 +296,9 @@ export function getBridgeStatus(): {
     wasmAvailable: wasmClient !== null,
     connected: localState.connected,
     nodeCount: wasmClient
-      ? (wasmClient.get_nodes?.()?.length ?? 0)
+      ? wasmClient.get_nodes?.()?.length ?? 0
       : localState.nodes.length,
     requestsRouted: localState.requestsRouted,
-    uptime: localState.connectTime
-      ? Date.now() - localState.connectTime
-      : 0,
+    uptime: localState.connectTime ? Date.now() - localState.connectTime : 0,
   };
 }

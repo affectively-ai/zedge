@@ -90,12 +90,12 @@ export type AgentActivity =
 
 // Agent colors — distinct from the 12 participant colors
 const AGENT_COLORS: Record<string, string> = {
-  'agent-qwen-7b': '#8b5cf6',       // purple
-  'agent-tinyllama': '#06b6d4',      // cyan
-  'agent-mistral': '#f59e0b',        // amber
-  'agent-gemma3': '#10b981',         // emerald
-  'agent-glm4': '#ec4899',           // pink
-  default: '#8b5cf6',                // default purple
+  'agent-qwen-7b': '#8b5cf6', // purple
+  'agent-tinyllama': '#06b6d4', // cyan
+  'agent-mistral': '#f59e0b', // amber
+  'agent-gemma3': '#10b981', // emerald
+  'agent-glm4': '#ec4899', // pink
+  default: '#8b5cf6', // default purple
 };
 
 // ---------------------------------------------------------------------------
@@ -115,11 +115,12 @@ export class AgentParticipant {
   constructor(
     config: AgentParticipantConfig,
     crdtBridge: CrdtBridge,
-    ucanBridge?: UcanBridge,
+    ucanBridge?: UcanBridge
   ) {
     this.config = {
       ...config,
-      color: config.color || AGENT_COLORS[config.agentId] || AGENT_COLORS.default!,
+      color:
+        config.color || AGENT_COLORS[config.agentId] || AGENT_COLORS.default!,
     };
     this.crdtBridge = crdtBridge;
     this.ucanBridge = ucanBridge ?? null;
@@ -136,7 +137,10 @@ export class AgentParticipant {
     // Acquire UCAN token scoped to the agent's mode
     if (this.ucanBridge) {
       const agentDid = `did:key:agent-${this.config.agentId}`;
-      const result = await this.ucanBridge.issueAgentToken(agentDid, this.config.mode);
+      const result = await this.ucanBridge.issueAgentToken(
+        agentDid,
+        this.config.mode
+      );
       this.ucanToken = result.token;
     }
 
@@ -162,7 +166,10 @@ export class AgentParticipant {
   /**
    * Open a file for reading/editing via CRDT.
    */
-  async openFile(path: string, initialContent?: string): Promise<AgentFileState> {
+  async openFile(
+    path: string,
+    initialContent?: string
+  ): Promise<AgentFileState> {
     const handle = await this.crdtBridge.openFile(path, initialContent);
     this.openFiles.add(path);
     this.activeFile = path;
@@ -198,9 +205,8 @@ export class AgentParticipant {
     this.crdtBridge.closeFile(path);
     this.openFiles.delete(path);
     if (this.activeFile === path) {
-      this.activeFile = this.openFiles.size > 0
-        ? Array.from(this.openFiles)[0]!
-        : null;
+      this.activeFile =
+        this.openFiles.size > 0 ? Array.from(this.openFiles)[0]! : null;
     }
   }
 
@@ -366,10 +372,13 @@ export class AgentParticipant {
   shareDiagnostics(
     path: string,
     diagnostics: Array<{
-      filePath: string; line: number; column: number;
+      filePath: string;
+      line: number;
+      column: number;
       severity: 'error' | 'warning' | 'info' | 'hint';
-      message: string; source: string;
-    }>,
+      message: string;
+      source: string;
+    }>
   ): void {
     this.crdtBridge.shareDiagnostics(path, diagnostics);
   }
@@ -393,7 +402,7 @@ export class AgentParticipant {
     path: string,
     blockId: string,
     emotion: string,
-    intensity: number = 0.5,
+    intensity: number = 0.5
   ): void {
     this.crdtBridge.tagEmotion(path, {
       blockId,

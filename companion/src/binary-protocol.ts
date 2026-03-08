@@ -110,8 +110,7 @@ export function encode(frame: InferenceFrame): ArrayBuffer {
     totalDataSize += alignTo16(tensor.data.byteLength);
   }
 
-  const totalSize =
-    HEADER_SIZE + tensorCount * DESCRIPTOR_SIZE + totalDataSize;
+  const totalSize = HEADER_SIZE + tensorCount * DESCRIPTOR_SIZE + totalDataSize;
   const buffer = new ArrayBuffer(totalSize);
   const view = new DataView(buffer);
   let offset = 0;
@@ -172,7 +171,9 @@ export function decode(buffer: ArrayBuffer): InferenceFrame {
   const magic = view.getUint32(offset, false);
   if (magic !== MAGIC) {
     throw new Error(
-      `Invalid magic: expected 0x${MAGIC.toString(16)}, got 0x${magic.toString(16)}`
+      `Invalid magic: expected 0x${MAGIC.toString(16)}, got 0x${magic.toString(
+        16
+      )}`
     );
   }
   offset += 4;
@@ -187,7 +188,9 @@ export function decode(buffer: ArrayBuffer): InferenceFrame {
   offset += 2;
 
   // Read descriptors
-  const descriptors: Array<TensorDescriptor & { _dataOffset: number; _dataLen: number }> = [];
+  const descriptors: Array<
+    TensorDescriptor & { _dataOffset: number; _dataLen: number }
+  > = [];
   for (let i = 0; i < tensorCount; i++) {
     const archType = view.getUint8(offset) as ArchType;
     const tensorType = view.getUint8(offset + 1) as TensorType;
@@ -264,7 +267,9 @@ export function fromFloat32(
 export function toFloat32(tensor: Tensor): Float32Array {
   if (tensor.descriptor.dataType !== DataType.F32) {
     throw new Error(
-      `Cannot convert ${DataType[tensor.descriptor.dataType]} to Float32 directly`
+      `Cannot convert ${
+        DataType[tensor.descriptor.dataType]
+      } to Float32 directly`
     );
   }
   return new Float32Array(tensor.data);
@@ -285,8 +290,7 @@ export function isValidFrame(buffer: ArrayBuffer): boolean {
   if (buffer.byteLength < HEADER_SIZE) return false;
   const view = new DataView(buffer);
   return (
-    view.getUint32(0, false) === MAGIC &&
-    view.getUint16(4, false) === VERSION
+    view.getUint32(0, false) === MAGIC && view.getUint16(4, false) === VERSION
   );
 }
 

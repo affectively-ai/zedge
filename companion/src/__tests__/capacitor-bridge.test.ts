@@ -74,12 +74,22 @@ describe('CapacitorBridge', () => {
     const mount = cap.mount('/src');
 
     cap.indexBlock(mount.id, {
-      id: 'important', filePath: '/src/a.ts', startLine: 1, endLine: 10,
-      content: 'critical bug error crash handling', language: 'typescript', blockType: 'function',
+      id: 'important',
+      filePath: '/src/a.ts',
+      startLine: 1,
+      endLine: 10,
+      content: 'critical bug error crash handling',
+      language: 'typescript',
+      blockType: 'function',
     });
     cap.indexBlock(mount.id, {
-      id: 'boring', filePath: '/src/b.ts', startLine: 1, endLine: 2,
-      content: 'import x from "y"', language: 'typescript', blockType: 'import',
+      id: 'boring',
+      filePath: '/src/b.ts',
+      startLine: 1,
+      endLine: 2,
+      content: 'import x from "y"',
+      language: 'typescript',
+      blockType: 'import',
     });
 
     const layout = cap.getLayout(mount.id);
@@ -92,16 +102,31 @@ describe('CapacitorBridge', () => {
     const mount = cap.mount('/src');
 
     cap.indexBlock(mount.id, {
-      id: 'a1', filePath: '/src/a.ts', startLine: 1, endLine: 5,
-      content: 'function a() {}', language: 'ts', blockType: 'function',
+      id: 'a1',
+      filePath: '/src/a.ts',
+      startLine: 1,
+      endLine: 5,
+      content: 'function a() {}',
+      language: 'ts',
+      blockType: 'function',
     });
     cap.indexBlock(mount.id, {
-      id: 'a2', filePath: '/src/a.ts', startLine: 6, endLine: 10,
-      content: 'function b() {}', language: 'ts', blockType: 'function',
+      id: 'a2',
+      filePath: '/src/a.ts',
+      startLine: 6,
+      endLine: 10,
+      content: 'function b() {}',
+      language: 'ts',
+      blockType: 'function',
     });
     cap.indexBlock(mount.id, {
-      id: 'b1', filePath: '/src/b.ts', startLine: 1, endLine: 5,
-      content: 'class C {}', language: 'ts', blockType: 'class',
+      id: 'b1',
+      filePath: '/src/b.ts',
+      startLine: 1,
+      endLine: 5,
+      content: 'class C {}',
+      language: 'ts',
+      blockType: 'class',
     });
 
     const clusters = cap.getClusters(mount.id);

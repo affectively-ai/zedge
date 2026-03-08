@@ -117,7 +117,9 @@ export interface CompositionPreset {
   /** Optional LoRA adapter names per layer zone */
   adapters?: Partial<Record<LayerZone, string>>;
   /** Activation steering vectors per layer zone */
-  steering?: Partial<Record<LayerZone, { direction: string; strength: number }>>;
+  steering?: Partial<
+    Record<LayerZone, { direction: string; strength: number }>
+  >;
 }
 
 /** Built-in composition presets (from ebook ch10) */
@@ -628,8 +630,7 @@ async function inferModel(
       choices?: Array<{ message?: { content?: string } }>;
     };
 
-    const content =
-      data.choices?.[0]?.message?.content ?? '[no content]';
+    const content = data.choices?.[0]?.message?.content ?? '[no content]';
 
     return {
       model,
@@ -676,7 +677,9 @@ function findConsensus(results: ModelResult[]): {
   });
 
   // Pick the result with highest agreement
-  scores.sort((a, b) => b.score - a.score || a.result.durationMs - b.result.durationMs);
+  scores.sort(
+    (a, b) => b.score - a.score || a.result.durationMs - b.result.durationMs
+  );
 
   return {
     winner: scores[0].result,

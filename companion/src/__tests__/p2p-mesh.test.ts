@@ -1,9 +1,5 @@
 import { describe, test, expect, afterEach } from 'bun:test';
-import {
-  getMeshStatus,
-  computeLayerAssignments,
-  stopMesh,
-} from '../p2p-mesh';
+import { getMeshStatus, computeLayerAssignments, stopMesh } from '../p2p-mesh';
 import type { PeerNode, LayerAssignment } from '../p2p-mesh';
 
 describe('P2P Mesh', () => {
@@ -104,9 +100,7 @@ describe('P2P Mesh', () => {
     // Each peer should have layers
     expect(assignments[0].layerRange[0]).toBe(0);
     expect(assignments[0].layerRange[1]).toBeGreaterThan(0);
-    expect(assignments[1].layerRange[0]).toBe(
-      assignments[0].layerRange[1] + 1
-    );
+    expect(assignments[1].layerRange[0]).toBe(assignments[0].layerRange[1] + 1);
     expect(assignments[1].layerRange[1]).toBe(31);
 
     // Total layers covered should be 32

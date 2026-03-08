@@ -40,7 +40,9 @@ export function createResilientStream(
   request: ChatCompletionRequest,
   maxReconnects = 3
 ): ReadableStream<Uint8Array> {
-  const sessionId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const sessionId = `stream-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
   const encoder = new TextEncoder();
 
   const session: StreamSession = {
@@ -101,19 +103,11 @@ async function streamWithReconnect(
       );
 
       // Read the upstream response
-      const contentType =
-        result.response.headers.get('content-type') ?? '';
+      const contentType = result.response.headers.get('content-type') ?? '';
 
-      if (
-        contentType.includes('text/event-stream') &&
-        result.response.body
-      ) {
+      if (contentType.includes('text/event-stream') && result.response.body) {
         // Stream SSE events, buffering tokens
-        await readSSEStream(
-          result.response.body,
-          session,
-          controller
-        );
+        await readSSEStream(result.response.body, session, controller);
         // Stream completed successfully
         return;
       }
@@ -163,9 +157,7 @@ async function streamWithReconnect(
 /**
  * Build a request that continues from where we left off
  */
-function buildReconnectRequest(
-  session: StreamSession
-): ChatCompletionRequest {
+function buildReconnectRequest(session: StreamSession): ChatCompletionRequest {
   if (session.bufferedTokens.length === 0) {
     return session.request;
   }
@@ -179,7 +171,8 @@ function buildReconnectRequest(
     },
     {
       role: 'user' as const,
-      content: 'Continue your previous response from where you left off. Do not repeat what you already said.',
+      content:
+        'Continue your previous response from where you left off. Do not repeat what you already said.',
     },
   ];
 

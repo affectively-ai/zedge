@@ -19,7 +19,9 @@ describe('KernelBridge', () => {
 
   test('executeCommand throws for unknown command', async () => {
     const kernel = new KernelBridge();
-    await expect(kernel.executeCommand('nonexistent')).rejects.toThrow('not found');
+    await expect(kernel.executeCommand('nonexistent')).rejects.toThrow(
+      'not found'
+    );
   });
 
   test('routeTask returns correct model for bug-fix', () => {
@@ -75,7 +77,9 @@ describe('KernelBridge', () => {
 
   test('parseDeepLink handles aeon:// protocol', () => {
     const kernel = new KernelBridge();
-    const link = kernel.parseDeepLink('aeon://zedge/open?file=src/app.ts&line=42');
+    const link = kernel.parseDeepLink(
+      'aeon://zedge/open?file=src/app.ts&line=42'
+    );
     expect(link).not.toBeNull();
     expect(link!.action).toBe('open');
     expect(link!.params.file).toBe('src/app.ts');

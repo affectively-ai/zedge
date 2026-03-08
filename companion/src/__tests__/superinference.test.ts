@@ -1,8 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import type {
-  SuperinferenceResult,
-  CollapseStrategy,
-} from '../superinference';
+import type { SuperinferenceResult, CollapseStrategy } from '../superinference';
 
 describe('Superinference', () => {
   // Import dynamically to avoid module-level side effects
@@ -10,33 +7,29 @@ describe('Superinference', () => {
     return import('../superinference');
   }
 
-  test(
-    'superinfer with single model returns result',
-    async () => {
-      const { superinfer } = await loadModule();
-      const result = await superinfer({
-        request: {
-          model: 'tinyllama-1.1b',
-          messages: [{ role: 'user', content: 'hello' }],
-        },
-        models: ['tinyllama-1.1b'],
-        strategy: 'fastest',
-        timeoutMs: 20_000,
-      });
+  test('superinfer with single model returns result', async () => {
+    const { superinfer } = await loadModule();
+    const result = await superinfer({
+      request: {
+        model: 'tinyllama-1.1b',
+        messages: [{ role: 'user', content: 'hello' }],
+      },
+      models: ['tinyllama-1.1b'],
+      strategy: 'fastest',
+      timeoutMs: 20_000,
+    });
 
-      expect(result).toHaveProperty('content');
-      expect(result).toHaveProperty('winningModel');
-      expect(result).toHaveProperty('strategy');
-      expect(result).toHaveProperty('modelResults');
-      expect(result).toHaveProperty('durationMs');
-      expect(result).toHaveProperty('confidence');
-      expect(result.strategy).toBe('fastest');
-      expect(typeof result.durationMs).toBe('number');
-      expect(result.durationMs).toBeGreaterThan(0);
-      expect(result.modelResults.length).toBe(1);
-    },
-    25_000
-  );
+    expect(result).toHaveProperty('content');
+    expect(result).toHaveProperty('winningModel');
+    expect(result).toHaveProperty('strategy');
+    expect(result).toHaveProperty('modelResults');
+    expect(result).toHaveProperty('durationMs');
+    expect(result).toHaveProperty('confidence');
+    expect(result.strategy).toBe('fastest');
+    expect(typeof result.durationMs).toBe('number');
+    expect(result.durationMs).toBeGreaterThan(0);
+    expect(result.modelResults.length).toBe(1);
+  }, 25_000);
 
   test('superinfer throws with zero models', async () => {
     const { superinfer } = await loadModule();

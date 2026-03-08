@@ -1,9 +1,5 @@
 import { describe, test, expect, afterEach } from 'bun:test';
-import {
-  createSession,
-  getSession,
-  deleteSession,
-} from '../acp-agent';
+import { createSession, getSession, deleteSession } from '../acp-agent';
 import type { AgentCapabilities, AgentSession } from '../acp-agent';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
@@ -15,9 +11,15 @@ describe('ACP Agent', () => {
   function setupTestWorkspace(): string {
     testDir = mkdtempSync(join(tmpdir(), 'zedge-test-'));
     writeFileSync(join(testDir, 'main.ts'), 'console.log("hello");');
-    writeFileSync(join(testDir, 'utils.ts'), 'export const add = (a: number, b: number) => a + b;');
+    writeFileSync(
+      join(testDir, 'utils.ts'),
+      'export const add = (a: number, b: number) => a + b;'
+    );
     mkdirSync(join(testDir, 'src'));
-    writeFileSync(join(testDir, 'src', 'index.ts'), 'import { add } from "../utils";');
+    writeFileSync(
+      join(testDir, 'src', 'index.ts'),
+      'import { add } from "../utils";'
+    );
     return testDir;
   }
 

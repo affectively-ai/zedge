@@ -172,12 +172,16 @@ async function tryEdgeCoordinator(
     ...authHeaders,
   };
 
+  // Force non-streaming for edge coordinator too — the companion handles
+  // JSON → SSE conversion for Zed. This avoids coordinator SSE bugs and
+  // ensures consistent behavior across all tiers.
+  const edgeRequest = { ...request, stream: false };
   logInference(`[edge] → ${baseUrl}/v1/chat/completions model=${request.model} headers=${JSON.stringify(Object.keys(authHeaders))}`);
 
   const resp = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(request),
+    body: JSON.stringify(edgeRequest),
     signal,
   });
 
@@ -191,7 +195,11 @@ async function tryEdgeCoordinator(
 
 /**
  * Attempt inference via Cloud Run Coordinator directly
- * Bypasses CF Worker 120s timeout for larger models
+ * Bypasses CF Worker 120s timeout for larger models.
+ *
+ * Retries on 503 (Service Unavailable) which Cloud Run returns transiently
+ * while a container is cold-starting from zero instances. The container is
+ * typically ready within 3-10s, so we retry with exponential backoff.
  */
 async function tryCloudRunCoordinator(
   request: ChatCompletionRequest,
@@ -202,20 +210,51 @@ async function tryCloudRunCoordinator(
     throw new Error(`No Cloud Run coordinator for model: ${request.model}`);
   }
 
-  logInference(`[cloudrun] → ${coordinatorUrl}/v1/chat/completions model=${request.model}`);
+  const MAX_RETRIES = 8;
+  const INITIAL_BACKOFF_MS = 2_000;
+  const MAX_BACKOFF_MS = 15_000;
 
-  const resp = await fetch(`${coordinatorUrl}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-    signal,
-  });
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
 
-  const respHeaders: Record<string, string> = {};
-  resp.headers.forEach((v, k) => { respHeaders[k] = v; });
-  logInference(`[cloudrun] ← ${resp.status} ${resp.statusText} headers=${JSON.stringify(respHeaders)}`);
+    if (attempt === 0) {
+      logInference(`[cloudrun] → ${coordinatorUrl}/v1/chat/completions model=${request.model}`);
+    } else {
+      logInference(`[cloudrun] → retry ${attempt}/${MAX_RETRIES} model=${request.model}`);
+    }
 
-  return resp;
+    // Force non-streaming for direct Cloud Run calls. The coordinator's
+    // streaming mode is broken (returns 0 data events). Non-streaming works
+    // perfectly — the companion converts JSON → SSE for Zed.
+    const cloudRunRequest = { ...request, stream: false };
+    const resp = await fetch(`${coordinatorUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cloudRunRequest),
+      signal,
+    });
+
+    const respHeaders: Record<string, string> = {};
+    resp.headers.forEach((v, k) => { respHeaders[k] = v; });
+    logInference(`[cloudrun] ← ${resp.status} ${resp.statusText} headers=${JSON.stringify(respHeaders)}`);
+
+    // 503 = container cold-starting, retry with backoff
+    if (resp.status === 503 && attempt < MAX_RETRIES) {
+      const backoff = Math.min(INITIAL_BACKOFF_MS * Math.pow(1.5, attempt), MAX_BACKOFF_MS);
+      logInference(`[cloudrun] 503 cold-start, retrying in ${Math.round(backoff)}ms`);
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, backoff);
+        // If abort fires during backoff, resolve immediately
+        signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(undefined); }, { once: true });
+      });
+      continue;
+    }
+
+    return resp;
+  }
+
+  // Should never reach here, but satisfy TypeScript
+  throw new Error(`Cloud Run: exhausted ${MAX_RETRIES} retries`);
 }
 
 /**
@@ -518,28 +557,21 @@ export function createSSEProxyStream(
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
+  // Log all debug info to inference log — not to the SSE stream.
+  // Zed's OpenAI-compatible provider can't handle SSE comments.
+  // Debug info goes in HTTP response headers instead (X-Zedge-Tier, etc.).
+  if (attempts?.length) {
+    const chainStr = attempts
+      .map((a) => `${a.tier}:${a.status}(${a.ms}ms)${a.detail ? '[' + a.detail.slice(0, 40) + ']' : ''}`)
+      .join(' → ');
+    logInference(`[sse-proxy] tier=${tier} chain: ${chainStr}`);
+  }
+  for (const [key, value] of Object.entries(upstreamHeaders)) {
+    logInference(`[sse-proxy] tier=${tier} header: ${key}=${value}`);
+  }
+
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      // Send initial comment with tier info
-      controller.enqueue(encoder.encode(`: zedge-tier=${tier}\n\n`));
-
-      // Emit upstream debug headers as SSE comments so streaming clients can read them
-      for (const [key, value] of Object.entries(upstreamHeaders)) {
-        controller.enqueue(encoder.encode(`: ${key}=${value}\n\n`));
-      }
-
-      // Emit tier attempt chain as SSE comments for debugging
-      if (attempts?.length) {
-        for (const a of attempts) {
-          const detail = a.detail ? ` [${a.detail.slice(0, 60)}]` : '';
-          controller.enqueue(
-            encoder.encode(
-              `: attempt ${a.tier}: ${a.status} (${a.ms}ms)${detail}\n\n`
-            )
-          );
-        }
-      }
-
       if (!upstreamBody) {
         logInference(`[sse-proxy] tier=${tier} no upstream body`);
         controller.enqueue(
@@ -552,14 +584,16 @@ export function createSSEProxyStream(
         return;
       }
 
-      // Heartbeat interval
+      // Heartbeat to keep TCP connection alive during long waits
+      // (cold starts, prefill, weight loading). Zed's parser ignores
+      // non-`data:` lines but the bytes prevent idle connection timeouts.
       const heartbeat = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(': heartbeat\n\n'));
         } catch {
           clearInterval(heartbeat);
         }
-      }, 15_000);
+      }, 5_000);
 
       // SSE stream content logging
       let totalBytes = 0;
@@ -567,20 +601,24 @@ export function createSSEProxyStream(
       let firstDataLogged = false;
       let sawDone = false;
       const streamStart = Date.now();
+      let lineBuf = '';
 
       try {
         const reader = upstreamBody.getReader();
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          controller.enqueue(value);
 
-          // Log stream content for diagnostics
           totalBytes += value.byteLength;
           const text = decoder.decode(value, { stream: true });
 
-          // Count data events and log first few for format diagnostics
-          const lines = text.split('\n');
+          // Filter: only forward `data:` lines and blank-line delimiters.
+          // Strip all SSE comments (`: heartbeat`, `: prefill`, etc.)
+          // so Zed's parser never sees them.
+          lineBuf += text;
+          const lines = lineBuf.split('\n');
+          lineBuf = lines.pop() ?? '';
+
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               dataEventCount++;
@@ -588,24 +626,39 @@ export function createSSEProxyStream(
               if (payload === '[DONE]') {
                 sawDone = true;
               } else if (!firstDataLogged) {
-                // Log the first data event to diagnose format issues
                 firstDataLogged = true;
                 logInference(`[sse-proxy] tier=${tier} first-data: ${payload.slice(0, 200)}`);
               }
+              controller.enqueue(encoder.encode(line + '\n'));
+            } else if (line === '') {
+              controller.enqueue(encoder.encode('\n'));
+            } else if (line.startsWith(':')) {
+              // Log upstream comments (heartbeat, prefill) but don't forward
+              logInference(`[sse-proxy] tier=${tier} upstream: ${line.slice(0, 100)}`);
             }
           }
         }
+
+        // Flush remaining buffer
+        if (lineBuf.startsWith('data: ')) {
+          controller.enqueue(encoder.encode(lineBuf + '\n\n'));
+          const payload = lineBuf.slice(6).trim();
+          if (payload === '[DONE]') sawDone = true;
+          else dataEventCount++;
+        }
       } catch (err) {
-        // Send error event instead of silently dropping
         const errMsg = err instanceof Error ? err.message : 'Stream error';
         logInference(`[sse-proxy] tier=${tier} stream-error: ${errMsg}`);
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ error: errMsg })}\n\n`)
         );
       } finally {
+        clearInterval(heartbeat);
+        if (!sawDone) {
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        }
         const elapsed = Date.now() - streamStart;
         logInference(`[sse-proxy] tier=${tier} stream-end: ${totalBytes}B ${dataEventCount} data-events sawDone=${sawDone} ${elapsed}ms`);
-        clearInterval(heartbeat);
         try {
           controller.close();
         } catch {
@@ -667,6 +720,16 @@ export async function infer(
   // Tier 2: Race Edge + Cloud Run in parallel
   // Edge consistently takes 30s to timeout — racing both eliminates the waste.
   // First successful (200 OK) response wins; loser is aborted.
+  //
+  // IMPORTANT: Overall race deadline of 15s. If neither tier responds with
+  // a 200 OK within the deadline, fall immediately to WASM so the client
+  // (Zed) doesn't time out waiting. Cold starts can take 60s+ but Zed's
+  // built-in client timeout is much shorter. The race continues in the
+  // background to warm up the coordinator for subsequent requests.
+  // Large models can take minutes to cold-start and load weights from GCS FUSE.
+  // The race between edge + cloudrun means whichever responds first wins —
+  // the deadline is just a safety net before falling to WASM.
+  const RACE_DEADLINE_MS = 900_000; // 15 minutes
   const canCloudRun = config.cloudRunDirect && !!CLOUD_RUN_COORDINATORS[request.model];
   {
     const t0 = Date.now();
@@ -715,17 +778,41 @@ export async function infer(
       cloudRunPromise = Promise.resolve(null);
     }
 
-    // Race: first non-null result wins
-    const winner = await raceForFirst([edgePromise, cloudRunPromise]);
+    // Race with a deadline — if neither responds in time, fall to WASM so the
+    // client (Zed) gets an immediate response. CRITICALLY: do NOT abort the
+    // coordinator requests — let them continue in the background so Cold Start
+    // completes and the coordinator is warm for the next request.
+    const deadlinePromise = new Promise<null>((resolve) =>
+      setTimeout(() => {
+        attempt('edge', t0, 'timeout', `race deadline ${RACE_DEADLINE_MS}ms`);
+        if (canCloudRun) {
+          attempt('cloudrun', t0, 'timeout', `race deadline ${RACE_DEADLINE_MS}ms`);
+        }
+        resolve(null);
+      }, RACE_DEADLINE_MS)
+    );
+
+    const winner = await Promise.race([
+      raceForFirst([edgePromise, cloudRunPromise]),
+      deadlinePromise.then(() => null as { tier: InferenceTier; response: Response } | null),
+    ]);
     clearTimeout(edgeTimeout);
 
     if (winner) {
-      // Abort the loser
-      if (winner.tier === 'edge') {
-        cloudRunAbort.abort();
-      } else {
-        edgeAbort.abort();
-      }
+      // Don't abort the loser — let it complete in the background so it
+      // warms the coordinator cache (loads weights from GCS FUSE, etc.).
+      // This is especially important for large models where cold start +
+      // weight loading can take minutes.
+      const loserTier = winner.tier === 'edge' ? 'cloudrun' : 'edge';
+      const loserPromise = winner.tier === 'edge' ? cloudRunPromise : edgePromise;
+      loserPromise.then((result) => {
+        if (result) {
+          logInference(`model=${request.model} [background-warm] ${loserTier} completed after ${Date.now() - t0}ms (winner was ${winner.tier})`);
+          // Consume body to avoid leak, but let the request complete on the server
+          result.response.body?.cancel().catch(() => {});
+        }
+      }).catch(() => {});
+
       attempt(winner.tier, t0, 'ok');
       const xHeaders = extractUpstreamDebugHeaders(winner.response);
       logInference(`model=${request.model} tier=${winner.tier} status=ok ms=${Date.now() - t0} x-headers=${JSON.stringify(xHeaders)}`);
@@ -737,8 +824,21 @@ export async function infer(
       };
     }
 
-    // Both failed — log and continue to WASM
-    logInference(`model=${request.model} edge+cloudrun race: both failed, falling to WASM`);
+    // Deadline hit — fall to WASM immediately but DO NOT abort coordinators.
+    // Let edge/cloudrun continue warming up in the background. Log when they finish.
+    logInference(`model=${request.model} edge+cloudrun race: no winner within ${RACE_DEADLINE_MS}ms, falling to WASM (coordinators still warming)`);
+
+    // Fire-and-forget: track when coordinators eventually respond (for diagnostics)
+    raceForFirst([edgePromise, cloudRunPromise]).then((lateWinner) => {
+      if (lateWinner) {
+        const warmMs = Date.now() - t0;
+        logInference(`model=${request.model} [background-warm] ${lateWinner.tier} responded after ${warmMs}ms (was past ${RACE_DEADLINE_MS}ms deadline)`);
+        // Consume the response body to avoid memory leaks
+        lateWinner.response.body?.cancel().catch(() => {});
+      } else {
+        logInference(`model=${request.model} [background-warm] both tiers failed even after waiting`);
+      }
+    }).catch(() => {});
   }
 
   // Tier 4: Local WASM inference (real on-device generation)

@@ -128,9 +128,18 @@ export interface CrdtBridgeStatus {
 
 // Participant colors (same 12 from collab-bridge)
 const PARTICIPANT_COLORS = [
-  '#3b82f6', '#ef4444', '#10b981', '#f59e0b',
-  '#8b5cf6', '#ec4899', '#06b6d4', '#f97316',
-  '#6366f1', '#14b8a6', '#e11d48', '#84cc16',
+  '#3b82f6',
+  '#ef4444',
+  '#10b981',
+  '#f59e0b',
+  '#8b5cf6',
+  '#ec4899',
+  '#06b6d4',
+  '#f97316',
+  '#6366f1',
+  '#14b8a6',
+  '#e11d48',
+  '#84cc16',
 ];
 
 // ---------------------------------------------------------------------------
@@ -147,7 +156,8 @@ export class CrdtBridge {
   private poolRelay: DashRelay | null = null;
   private poolDoc: Y.Doc | null = null;
   private colorIndex = 0;
-  private peerListeners: Array<(event: string, ...args: unknown[]) => void> = [];
+  private peerListeners: Array<(event: string, ...args: unknown[]) => void> =
+    [];
 
   constructor(config: CrdtBridgeConfig) {
     this.config = config;
@@ -167,7 +177,8 @@ export class CrdtBridge {
     await this.presenceRelay.connect(this.presenceDoc);
 
     // Register self in presence
-    const presenceMap = this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
+    const presenceMap =
+      this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
     presenceMap.set(this.config.peerId, {
       peerId: this.config.peerId,
       displayName: this.config.displayName,
@@ -208,7 +219,8 @@ export class CrdtBridge {
   disconnect(): void {
     // Remove self from presence
     if (this.presenceDoc) {
-      const presenceMap = this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
+      const presenceMap =
+        this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
       presenceMap.delete(this.config.peerId);
     }
 
@@ -245,7 +257,10 @@ export class CrdtBridge {
    * Open a file for collaborative editing.
    * Returns a handle with CRDT-backed content, cursors, diagnostics, etc.
    */
-  async openFile(path: string, initialContent?: string): Promise<CrdtFileHandle> {
+  async openFile(
+    path: string,
+    initialContent?: string
+  ): Promise<CrdtFileHandle> {
     const existing = this.files.get(path);
     if (existing) return existing;
 
@@ -352,7 +367,7 @@ export class CrdtBridge {
     startLine: number,
     startCol: number,
     endLine: number,
-    endCol: number,
+    endCol: number
   ): void {
     const handle = this.files.get(path);
     if (!handle) return;
@@ -394,7 +409,10 @@ export class CrdtBridge {
   /**
    * Share diagnostics for a file.
    */
-  shareDiagnostics(path: string, diagnostics: Omit<CrdtDiagnosticEntry, 'peerId' | 'timestamp'>[]): void {
+  shareDiagnostics(
+    path: string,
+    diagnostics: Omit<CrdtDiagnosticEntry, 'peerId' | 'timestamp'>[]
+  ): void {
     const handle = this.files.get(path);
     if (!handle) return;
 
@@ -414,11 +432,13 @@ export class CrdtBridge {
 
       // Add new diagnostics
       for (const diag of diagnostics) {
-        handle.diagnostics.push([{
-          ...diag,
-          peerId: this.config.peerId,
-          timestamp: Date.now(),
-        }]);
+        handle.diagnostics.push([
+          {
+            ...diag,
+            peerId: this.config.peerId,
+            timestamp: Date.now(),
+          },
+        ]);
       }
     });
   }
@@ -439,7 +459,13 @@ export class CrdtBridge {
   /**
    * Add an annotation (code review comment, TODO, question).
    */
-  addAnnotation(path: string, annotation: Omit<CrdtAnnotation, 'id' | 'peerId' | 'displayName' | 'createdAt'>): CrdtAnnotation {
+  addAnnotation(
+    path: string,
+    annotation: Omit<
+      CrdtAnnotation,
+      'id' | 'peerId' | 'displayName' | 'createdAt'
+    >
+  ): CrdtAnnotation {
     const handle = this.files.get(path);
     if (!handle) throw new Error(`File not open: ${path}`);
 
@@ -476,7 +502,9 @@ export class CrdtBridge {
     if (!handle) return;
 
     const key = `${blockId}:${this.config.peerId}`;
-    const existing = handle.readingMetrics.get(key) as CrdtReadingEntry | undefined;
+    const existing = handle.readingMetrics.get(key) as
+      | CrdtReadingEntry
+      | undefined;
 
     const totalTime = (existing?.timeSpentMs ?? 0) + timeSpentMs;
     handle.readingMetrics.set(key, {
@@ -520,10 +548,14 @@ export class CrdtBridge {
   /**
    * Tag a code block with an emotion. Synced via the capacitor room.
    */
-  tagEmotion(path: string, tag: Omit<CrdtAmygdalaTag, 'peerId' | 'taggedAt'>): void {
+  tagEmotion(
+    path: string,
+    tag: Omit<CrdtAmygdalaTag, 'peerId' | 'taggedAt'>
+  ): void {
     if (!this.capacitorDoc) return;
 
-    const emotionMap = this.capacitorDoc.getMap<CrdtAmygdalaTag>('amygdalaTags');
+    const emotionMap =
+      this.capacitorDoc.getMap<CrdtAmygdalaTag>('amygdalaTags');
     const key = `${path}:${tag.blockId}:${this.config.peerId}`;
     emotionMap.set(key, {
       ...tag,
@@ -538,7 +570,8 @@ export class CrdtBridge {
   getEmotionTags(path: string, blockId: string): CrdtAmygdalaTag[] {
     if (!this.capacitorDoc) return [];
 
-    const emotionMap = this.capacitorDoc.getMap<CrdtAmygdalaTag>('amygdalaTags');
+    const emotionMap =
+      this.capacitorDoc.getMap<CrdtAmygdalaTag>('amygdalaTags');
     const results: CrdtAmygdalaTag[] = [];
     const prefix = `${path}:${blockId}:`;
 
@@ -569,7 +602,8 @@ export class CrdtBridge {
    */
   getParticipants(): CrdtPresenceEntry[] {
     if (!this.presenceDoc) return [];
-    const presenceMap = this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
+    const presenceMap =
+      this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
     return Array.from(presenceMap.values());
   }
 
@@ -579,7 +613,8 @@ export class CrdtBridge {
   updateIdleStatus(): void {
     if (!this.presenceDoc) return;
 
-    const presenceMap = this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
+    const presenceMap =
+      this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
     const myEntry = presenceMap.get(this.config.peerId);
     if (!myEntry) return;
 
@@ -628,7 +663,10 @@ export class CrdtBridge {
    * Create an UndoManager that tracks a specific peer's operations
    * (used to selectively undo agent edits).
    */
-  createPeerUndoManager(path: string, trackedPeerOrigin: number): Y.UndoManager | null {
+  createPeerUndoManager(
+    path: string,
+    trackedPeerOrigin: number
+  ): Y.UndoManager | null {
     const handle = this.files.get(path);
     if (!handle) return null;
     return new Y.UndoManager(handle.content, {
@@ -645,7 +683,12 @@ export class CrdtBridge {
    */
   recordContribution(peerId: string, tokens: number, requests: number): void {
     if (!this.poolDoc) return;
-    const ledger = this.poolDoc.getMap<{ peerId: string; tokens: number; requests: number; lastContribution: number }>('contributions');
+    const ledger = this.poolDoc.getMap<{
+      peerId: string;
+      tokens: number;
+      requests: number;
+      lastContribution: number;
+    }>('contributions');
     const existing = ledger.get(peerId);
     ledger.set(peerId, {
       peerId,
@@ -658,10 +701,25 @@ export class CrdtBridge {
   /**
    * Get the full reputation ledger.
    */
-  getReputationLedger(): Array<{ peerId: string; tokens: number; requests: number; lastContribution: number }> {
+  getReputationLedger(): Array<{
+    peerId: string;
+    tokens: number;
+    requests: number;
+    lastContribution: number;
+  }> {
     if (!this.poolDoc) return [];
-    const ledger = this.poolDoc.getMap<{ peerId: string; tokens: number; requests: number; lastContribution: number }>('contributions');
-    const results: Array<{ peerId: string; tokens: number; requests: number; lastContribution: number }> = [];
+    const ledger = this.poolDoc.getMap<{
+      peerId: string;
+      tokens: number;
+      requests: number;
+      lastContribution: number;
+    }>('contributions');
+    const results: Array<{
+      peerId: string;
+      tokens: number;
+      requests: number;
+      lastContribution: number;
+    }> = [];
     ledger.forEach((entry) => results.push(entry));
     return results;
   }
@@ -713,7 +771,10 @@ export class CrdtBridge {
   // -------------------------------------------------------------------------
 
   private createRelay(roomSuffix: string): DashRelay {
-    const normalizedWs = this.config.workspaceId.replace(/[^a-zA-Z0-9._:-]/g, '_');
+    const normalizedWs = this.config.workspaceId.replace(
+      /[^a-zA-Z0-9._:-]/g,
+      '_'
+    );
     const normalizedSuffix = roomSuffix.replace(/[^a-zA-Z0-9._:-]/g, '_');
     return new DashRelay({
       roomName: `aeon.kernel.zedge.${normalizedWs}.${normalizedSuffix}`,
@@ -726,7 +787,8 @@ export class CrdtBridge {
 
   private updatePresenceFile(path: string): void {
     if (!this.presenceDoc) return;
-    const presenceMap = this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
+    const presenceMap =
+      this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
     const entry = presenceMap.get(this.config.peerId);
     if (entry) {
       presenceMap.set(this.config.peerId, {
@@ -738,9 +800,13 @@ export class CrdtBridge {
     }
   }
 
-  private updatePresenceActivity(path: string, activity: CrdtPresenceEntry['activity']): void {
+  private updatePresenceActivity(
+    path: string,
+    activity: CrdtPresenceEntry['activity']
+  ): void {
     if (!this.presenceDoc) return;
-    const presenceMap = this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
+    const presenceMap =
+      this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
     const entry = presenceMap.get(this.config.peerId);
     if (entry) {
       presenceMap.set(this.config.peerId, {
@@ -754,14 +820,16 @@ export class CrdtBridge {
   }
 
   private nextColor(): string {
-    const color = PARTICIPANT_COLORS[this.colorIndex % PARTICIPANT_COLORS.length]!;
+    const color =
+      PARTICIPANT_COLORS[this.colorIndex % PARTICIPANT_COLORS.length]!;
     this.colorIndex++;
     return color;
   }
 
   private getMyColor(): string {
     if (!this.presenceDoc) return PARTICIPANT_COLORS[0]!;
-    const presenceMap = this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
+    const presenceMap =
+      this.presenceDoc.getMap<CrdtPresenceEntry>('participants');
     const entry = presenceMap.get(this.config.peerId);
     return entry?.color ?? PARTICIPANT_COLORS[0]!;
   }

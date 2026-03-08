@@ -67,7 +67,15 @@ describe('CollabBridge', () => {
     const session = bridge.createSession('/src/app.ts');
 
     bridge.shareDiagnostics(session.id, [
-      { filePath: '/src/app.ts', line: 5, column: 1, severity: 'error', message: 'Type error', source: 'ts', peerId: 'peer-1' },
+      {
+        filePath: '/src/app.ts',
+        line: 5,
+        column: 1,
+        severity: 'error',
+        message: 'Type error',
+        source: 'ts',
+        peerId: 'peer-1',
+      },
     ]);
 
     const diags = bridge.getDiagnostics(session.id);
@@ -89,7 +97,9 @@ describe('CollabBridge', () => {
     bridge.joinSession(session.id, 'peer-2', 'Bob');
     bridge.joinSession(session.id, 'peer-3', 'Charlie');
 
-    const colors = Array.from(session.participants.values()).map((p) => p.color);
+    const colors = Array.from(session.participants.values()).map(
+      (p) => p.color
+    );
     const uniqueColors = new Set(colors);
     expect(uniqueColors.size).toBe(3);
   });

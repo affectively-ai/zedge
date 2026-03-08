@@ -6,11 +6,7 @@
  * Routes to the fastest healthy coordinator per model.
  */
 
-import {
-  getApiBaseUrl,
-  getAuthHeaders,
-  getZedgeConfig,
-} from './config';
+import { getApiBaseUrl, getAuthHeaders, getZedgeConfig } from './config';
 
 // --- Types ---
 
@@ -38,14 +34,16 @@ const PROBE_TIMEOUT_MS = 5_000;
 
 // Cloud Run coordinator URLs
 const CLOUD_RUN_COORDINATORS: Record<string, string> = {
-  'tinyllama-1.1b': 'https://tinyllama-1-1b-coordinator-jqfuhpqhja-uc.a.run.app',
+  'tinyllama-1.1b':
+    'https://tinyllama-1-1b-coordinator-jqfuhpqhja-uc.a.run.app',
   'mistral-7b': 'https://mistral-7b-coordinator-jqfuhpqhja-uc.a.run.app',
   'qwen-2.5-coder-7b': 'https://qwen-edit-coordinator-jqfuhpqhja-uc.a.run.app',
   'gemma3-4b-it': 'https://gemma3-4b-it-coordinator-jqfuhpqhja-uc.a.run.app',
   'gemma3-1b-it': 'https://gemma3-1b-it-coordinator-jqfuhpqhja-uc.a.run.app',
   'glm-4-9b': 'https://glm-4-9b-coordinator-jqfuhpqhja-uc.a.run.app',
   'deepseek-r1': 'https://deepseek-r1-coordinator-jqfuhpqhja-uc.a.run.app',
-  'lfm2.5-1.2b-glm-4.7-flash-thinking': 'https://lfm-1-2b-coordinator-jqfuhpqhja-uc.a.run.app',
+  'lfm2.5-1.2b-glm-4.7-flash-thinking':
+    'https://lfm-1-2b-coordinator-jqfuhpqhja-uc.a.run.app',
 };
 
 let probeInterval: ReturnType<typeof setInterval> | null = null;
@@ -119,7 +117,10 @@ export function getFastestTier(model: string): string | null {
  */
 export function getTierHealth(): TierHealth {
   const edge = probeCache.get('edge:global');
-  const cloudRunHealth: Record<string, { healthy: boolean; latencyMs: number }> = {};
+  const cloudRunHealth: Record<
+    string,
+    { healthy: boolean; latencyMs: number }
+  > = {};
 
   for (const model of Object.keys(CLOUD_RUN_COORDINATORS)) {
     const probe = probeCache.get(`cloudrun:${model}`);
@@ -154,7 +155,9 @@ async function probeAll(): Promise<void> {
   const promises: Promise<void>[] = [];
 
   // Probe edge coordinator
-  promises.push(probeEndpoint('edge', 'global', `${getApiBaseUrl()}/v1/models`));
+  promises.push(
+    probeEndpoint('edge', 'global', `${getApiBaseUrl()}/v1/models`)
+  );
 
   // Probe each Cloud Run coordinator
   for (const [model, url] of Object.entries(CLOUD_RUN_COORDINATORS)) {

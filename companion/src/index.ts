@@ -22,7 +22,7 @@ import { joinPool, getPoolStatus } from './compute-node';
 import { startMesh, getMeshStatus } from './p2p-mesh';
 import { startProbing } from './latency-probe';
 import { whoami } from './auth';
-import { getZedgeConfig } from './config';
+import { getZedgeConfig, getApiBaseUrl, getAuthHeaders } from './config';
 import { ForgeBridge } from './forge-bridge';
 import { VfsBridge } from './vfs-bridge';
 import { CollabBridge } from './collab-bridge';
@@ -30,6 +30,34 @@ import { KernelBridge } from './kernel-bridge';
 import { CapacitorBridge } from './capacitor-bridge';
 import { CrdtBridge } from './crdt-bridge';
 import { UcanBridge } from './ucan-bridge';
+
+/**
+ * Probe the gateway to verify what tier the API key resolves to.
+ * Logs the result so operators can confirm their key works.
+ */
+async function verifyKeyTier(): Promise<void> {
+  try {
+    const resp = await fetch(`${getApiBaseUrl()}/v1/models`, {
+      headers: getAuthHeaders(),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const modelCount = resp.ok
+      ? ((await resp.json()) as any)?.data?.length ?? '?'
+      : '?';
+    // Collect all X-* response headers
+    const xHeaders: Record<string, string> = {};
+    resp.headers.forEach((v, k) => {
+      if (k.startsWith('x-')) xHeaders[k] = v;
+    });
+    const tier = xHeaders['x-verified-tier'] || xHeaders['x-subscription-tier'] || 'unknown';
+    const user = xHeaders['x-verified-user'] || 'unknown';
+    console.log(
+      `[zedge] Gateway verified: tier=${tier} user=${user} models=${modelCount} status=${resp.status} headers=${JSON.stringify(xHeaders)}`
+    );
+  } catch (err) {
+    console.warn(`[zedge] Gateway tier probe failed: ${err}`);
+  }
+}
 
 async function main(): Promise<void> {
   console.log('[zedge] Starting companion sidecar v2.0...');
@@ -43,8 +71,12 @@ async function main(): Promise<void> {
   const authStatus = whoami();
   if (authStatus.authenticated) {
     console.log(
-      `[zedge] Authenticated via ${authStatus.method}${authStatus.email ? ` (${authStatus.email})` : ''}`
+      `[zedge] Authenticated via ${authStatus.method}${
+        authStatus.email ? ` (${authStatus.email})` : ''
+      }`
     );
+    // Probe the gateway to verify tier
+    verifyKeyTier().catch(() => {});
   } else {
     console.log(
       '[zedge] Not authenticated. Run POST /auth/login or create ~/.edgework/api-key'
@@ -66,7 +98,11 @@ async function main(): Promise<void> {
     await joinPool();
     const status = getPoolStatus();
     console.log(
-      `[zedge] Pool: ${status.connectedNodes} nodes, ${status.tokensEarned} tokens earned, WASM bridge: ${status.wasmBridgeAvailable ? 'yes' : 'no'}`
+      `[zedge] Pool: ${status.connectedNodes} nodes, ${
+        status.tokensEarned
+      } tokens earned, WASM bridge: ${
+        status.wasmBridgeAvailable ? 'yes' : 'no'
+      }`
     );
   }
 
@@ -107,12 +143,22 @@ async function main(): Promise<void> {
     name: 'Zedge Companion',
     version: '2.0.0',
     capabilities: [
-      'inference', 'superinference', 'mesh', 'forge-deploy',
-      'vfs', 'collab', 'capacitor', 'compute-market',
+      'inference',
+      'superinference',
+      'mesh',
+      'forge-deploy',
+      'vfs',
+      'collab',
+      'capacitor',
+      'compute-market',
     ],
     commands: [],
   });
-  console.log(`[zedge] Kernel bridge initialized (${kernel.listCommands().length} commands)`);
+  console.log(
+    `[zedge] Kernel bridge initialized (${
+      kernel.listCommands().length
+    } commands)`
+  );
 
   // Initialize Capacitor Bridge (Phase 5)
   const capacitor = new CapacitorBridge();
@@ -138,7 +184,11 @@ async function main(): Promise<void> {
       `[zedge] Ghostwriter CRDT bridge connected (workspace: ${crdtStatus.workspaceId}, peers: ${crdtStatus.peerCount})`
     );
   } catch (err) {
-    console.log(`[zedge] Ghostwriter CRDT bridge offline (${String(err)}). Local-only mode.`);
+    console.log(
+      `[zedge] Ghostwriter CRDT bridge offline (${String(
+        err
+      )}). Local-only mode.`
+    );
   }
 
   // Initialize UcanBridge (Ghostwriter Phase 2)
@@ -152,7 +202,9 @@ async function main(): Promise<void> {
   try {
     await ucan.init();
     setUcanBridge(ucan);
-    console.log(`[zedge] UCAN bridge initialized (DID: ${ucan.getDid().slice(0, 24)}...)`);
+    console.log(
+      `[zedge] UCAN bridge initialized (DID: ${ucan.getDid().slice(0, 24)}...)`
+    );
   } catch (err) {
     console.log(`[zedge] UCAN bridge failed to initialize (${String(err)})`);
   }

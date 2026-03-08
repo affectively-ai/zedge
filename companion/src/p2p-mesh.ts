@@ -104,9 +104,7 @@ export function startMesh(): MeshStatus {
     });
     socket.bind(BROADCAST_PORT, () => {
       socket.setBroadcast(true);
-      console.log(
-        `[zedge:mesh] Discovery listener on UDP :${BROADCAST_PORT}`
-      );
+      console.log(`[zedge:mesh] Discovery listener on UDP :${BROADCAST_PORT}`);
     });
     meshState.broadcastSocket = socket;
   } catch (err) {
@@ -355,10 +353,11 @@ function handleDiscoveryMessage(msg: Buffer, rinfo: { address: string }): void {
 
 function broadcastPresence(): void {
   const config = getZedgeConfig();
-  const loadAvg = cpus().reduce((acc, cpu) => {
-    const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
-    return acc + (1 - cpu.times.idle / total);
-  }, 0) / cpus().length;
+  const loadAvg =
+    cpus().reduce((acc, cpu) => {
+      const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
+      return acc + (1 - cpu.times.idle / total);
+    }, 0) / cpus().length;
 
   const message: DiscoveryMessage = {
     type: 'announce',
@@ -381,11 +380,18 @@ function broadcastMessage(message: DiscoveryMessage): void {
   if (!meshState.broadcastSocket) return;
 
   const buf = Buffer.from(JSON.stringify(message));
-  meshState.broadcastSocket.send(buf, 0, buf.length, BROADCAST_PORT, '255.255.255.255', (err) => {
-    if (err) {
-      // Broadcast may fail on some networks, that's ok
+  meshState.broadcastSocket.send(
+    buf,
+    0,
+    buf.length,
+    BROADCAST_PORT,
+    '255.255.255.255',
+    (err) => {
+      if (err) {
+        // Broadcast may fail on some networks, that's ok
+      }
     }
-  });
+  );
 }
 
 function pruneStale(): void {

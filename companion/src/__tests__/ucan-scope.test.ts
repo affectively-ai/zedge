@@ -15,7 +15,12 @@ describe('ucan-scope', () => {
       const capabilities: ZedgeCapability[] = [
         { resource: 'zedge/file', action: 'read' },
       ];
-      const result = generateRoomUcan('issuer-1', 'audience-1', 'my-room', capabilities);
+      const result = generateRoomUcan(
+        'issuer-1',
+        'audience-1',
+        'my-room',
+        capabilities
+      );
 
       expect(result.token).toBeTruthy();
       expect(result.token.split('.')).toHaveLength(3);
@@ -44,7 +49,12 @@ describe('ucan-scope', () => {
       const capabilities: ZedgeCapability[] = [
         { resource: 'zedge/file', action: 'write' },
       ];
-      const { token } = generateRoomUcan('iss-A', 'aud-B', 'room-X', capabilities);
+      const { token } = generateRoomUcan(
+        'iss-A',
+        'aud-B',
+        'room-X',
+        capabilities
+      );
       const parsed = parseRoomUcan(token);
 
       expect(parsed).not.toBeNull();
@@ -103,40 +113,85 @@ describe('ucan-scope', () => {
 
   describe('capabilitySatisfies', () => {
     it('matches exact resource and action', () => {
-      const granted: ZedgeCapability[] = [{ resource: 'zedge/file', action: 'read' }];
-      expect(capabilitySatisfies(granted, { resource: 'zedge/file', action: 'read' })).toBe(true);
+      const granted: ZedgeCapability[] = [
+        { resource: 'zedge/file', action: 'read' },
+      ];
+      expect(
+        capabilitySatisfies(granted, { resource: 'zedge/file', action: 'read' })
+      ).toBe(true);
     });
 
     it('does not match different action', () => {
-      const granted: ZedgeCapability[] = [{ resource: 'zedge/file', action: 'read' }];
-      expect(capabilitySatisfies(granted, { resource: 'zedge/file', action: 'write' })).toBe(false);
+      const granted: ZedgeCapability[] = [
+        { resource: 'zedge/file', action: 'read' },
+      ];
+      expect(
+        capabilitySatisfies(granted, {
+          resource: 'zedge/file',
+          action: 'write',
+        })
+      ).toBe(false);
     });
 
     it('does not match different resource', () => {
-      const granted: ZedgeCapability[] = [{ resource: 'zedge/file', action: 'read' }];
-      expect(capabilitySatisfies(granted, { resource: 'zedge/cursor', action: 'read' })).toBe(false);
+      const granted: ZedgeCapability[] = [
+        { resource: 'zedge/file', action: 'read' },
+      ];
+      expect(
+        capabilitySatisfies(granted, {
+          resource: 'zedge/cursor',
+          action: 'read',
+        })
+      ).toBe(false);
     });
 
     it('wildcard action satisfies any action', () => {
-      const granted: ZedgeCapability[] = [{ resource: 'zedge/file', action: '*' }];
-      expect(capabilitySatisfies(granted, { resource: 'zedge/file', action: 'read' })).toBe(true);
-      expect(capabilitySatisfies(granted, { resource: 'zedge/file', action: 'write' })).toBe(true);
+      const granted: ZedgeCapability[] = [
+        { resource: 'zedge/file', action: '*' },
+      ];
+      expect(
+        capabilitySatisfies(granted, { resource: 'zedge/file', action: 'read' })
+      ).toBe(true);
+      expect(
+        capabilitySatisfies(granted, {
+          resource: 'zedge/file',
+          action: 'write',
+        })
+      ).toBe(true);
     });
 
     it('wildcard resource satisfies any resource', () => {
-      const granted: ZedgeCapability[] = [{ resource: 'zedge/*', action: 'read' }];
-      expect(capabilitySatisfies(granted, { resource: 'zedge/file', action: 'read' })).toBe(true);
-      expect(capabilitySatisfies(granted, { resource: 'zedge/cursor', action: 'read' })).toBe(true);
+      const granted: ZedgeCapability[] = [
+        { resource: 'zedge/*', action: 'read' },
+      ];
+      expect(
+        capabilitySatisfies(granted, { resource: 'zedge/file', action: 'read' })
+      ).toBe(true);
+      expect(
+        capabilitySatisfies(granted, {
+          resource: 'zedge/cursor',
+          action: 'read',
+        })
+      ).toBe(true);
     });
 
     it('full wildcard satisfies anything', () => {
       const granted: ZedgeCapability[] = [{ resource: 'zedge/*', action: '*' }];
-      expect(capabilitySatisfies(granted, { resource: 'zedge/file', action: 'read' })).toBe(true);
-      expect(capabilitySatisfies(granted, { resource: 'zedge/annotations', action: 'write' })).toBe(true);
+      expect(
+        capabilitySatisfies(granted, { resource: 'zedge/file', action: 'read' })
+      ).toBe(true);
+      expect(
+        capabilitySatisfies(granted, {
+          resource: 'zedge/annotations',
+          action: 'write',
+        })
+      ).toBe(true);
     });
 
     it('returns false for empty granted list', () => {
-      expect(capabilitySatisfies([], { resource: 'zedge/file', action: 'read' })).toBe(false);
+      expect(
+        capabilitySatisfies([], { resource: 'zedge/file', action: 'read' })
+      ).toBe(false);
     });
   });
 
@@ -157,7 +212,9 @@ describe('ucan-scope', () => {
       const invite = generateInvite('peer-1', 'room-1', 'reviewMode');
       const parsed = parseRoomUcan(invite.token);
       expect(parsed).not.toBeNull();
-      expect(parsed!.capabilities).toEqual(getCapabilitiesForMode('reviewMode'));
+      expect(parsed!.capabilities).toEqual(
+        getCapabilitiesForMode('reviewMode')
+      );
     });
 
     it('sets audience to wildcard', () => {

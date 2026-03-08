@@ -25,7 +25,10 @@ export class CrdtEncryptionProvider {
   }
 
   encrypt(update: Uint8Array): Uint8Array {
-    const { ciphertext, iv, authTag } = encryptAes256Gcm(this.encryptionKey, update);
+    const { ciphertext, iv, authTag } = encryptAes256Gcm(
+      this.encryptionKey,
+      update
+    );
     // Pack: iv (12) + authTag (16) + ciphertext
     const packed = new Uint8Array(12 + 16 + ciphertext.length);
     packed.set(iv, 0);

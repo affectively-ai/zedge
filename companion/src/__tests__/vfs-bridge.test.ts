@@ -1,7 +1,13 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { VfsBridge } from '../vfs-bridge';
 import { join } from 'node:path';
-import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const TEST_DIR = join(tmpdir(), `zedge-vfs-test-${Date.now()}`);
@@ -20,7 +26,9 @@ function cleanup(): void {
   for (const dir of [TEST_DIR, PEER_DIR]) {
     try {
       if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
-    } catch { /* best effort */ }
+    } catch {
+      /* best effort */
+    }
   }
 }
 

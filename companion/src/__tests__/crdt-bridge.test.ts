@@ -12,7 +12,9 @@ mock.module('@dashrelay/client', () => ({
     on() {}
     off() {}
     broadcast() {}
-    get localPeerId() { return (this.config.clientId as string) || 'mock-peer'; }
+    get localPeerId() {
+      return (this.config.clientId as string) || 'mock-peer';
+    }
   },
 }));
 
@@ -22,13 +24,17 @@ mock.module('yjs', () => {
     _content = '';
     _observers: Function[] = [];
     _doc: any = null;
-    get length() { return this._content.length; }
+    get length() {
+      return this._content.length;
+    }
     insert(index: number, text: string) {
-      this._content = this._content.slice(0, index) + text + this._content.slice(index);
+      this._content =
+        this._content.slice(0, index) + text + this._content.slice(index);
       this._notifyDoc();
     }
     delete(index: number, length: number) {
-      this._content = this._content.slice(0, index) + this._content.slice(index + length);
+      this._content =
+        this._content.slice(0, index) + this._content.slice(index + length);
       this._notifyDoc();
     }
     _notifyDoc() {
@@ -37,41 +43,89 @@ mock.module('yjs', () => {
         fns.forEach((cb: Function) => cb(new Uint8Array(0), null));
       }
     }
-    toString() { return this._content; }
-    toJSON() { return this._content; }
-    observe(fn: Function) { this._observers.push(fn); }
+    toString() {
+      return this._content;
+    }
+    toJSON() {
+      return this._content;
+    }
+    observe(fn: Function) {
+      this._observers.push(fn);
+    }
     unobserve() {}
   }
 
   class MockYMap {
     _map = new Map();
     _observers: Function[] = [];
-    set(k: string, v: any) { this._map.set(k, v); }
-    get(k: string) { return this._map.get(k); }
-    has(k: string) { return this._map.has(k); }
-    delete(k: string) { return this._map.delete(k); }
-    toJSON() { return Object.fromEntries(this._map); }
-    forEach(fn: Function) { this._map.forEach((v: any, k: string) => fn(v, k)); }
-    entries() { return this._map.entries(); }
-    keys() { return this._map.keys(); }
-    values() { return this._map.values(); }
-    [Symbol.iterator]() { return this._map[Symbol.iterator](); }
-    get size() { return this._map.size; }
-    observe(fn: Function) { this._observers.push(fn); }
+    set(k: string, v: any) {
+      this._map.set(k, v);
+    }
+    get(k: string) {
+      return this._map.get(k);
+    }
+    has(k: string) {
+      return this._map.has(k);
+    }
+    delete(k: string) {
+      return this._map.delete(k);
+    }
+    toJSON() {
+      return Object.fromEntries(this._map);
+    }
+    forEach(fn: Function) {
+      this._map.forEach((v: any, k: string) => fn(v, k));
+    }
+    entries() {
+      return this._map.entries();
+    }
+    keys() {
+      return this._map.keys();
+    }
+    values() {
+      return this._map.values();
+    }
+    [Symbol.iterator]() {
+      return this._map[Symbol.iterator]();
+    }
+    get size() {
+      return this._map.size;
+    }
+    observe(fn: Function) {
+      this._observers.push(fn);
+    }
     unobserve() {}
   }
 
   class MockYArray {
     _arr: any[] = [];
-    push(items: any[]) { this._arr.push(...items); }
-    insert(index: number, content: any[]) { this._arr.splice(index, 0, ...content); }
-    delete(index: number, length: number) { this._arr.splice(index, length); }
-    get(index: number) { return this._arr[index]; }
-    toArray() { return [...this._arr]; }
-    toJSON() { return [...this._arr]; }
-    get length() { return this._arr.length; }
-    forEach(fn: (value: any, index: number, array: any[]) => void) { this._arr.forEach(fn); }
-    map(fn: Function) { return this._arr.map(fn as any); }
+    push(items: any[]) {
+      this._arr.push(...items);
+    }
+    insert(index: number, content: any[]) {
+      this._arr.splice(index, 0, ...content);
+    }
+    delete(index: number, length: number) {
+      this._arr.splice(index, length);
+    }
+    get(index: number) {
+      return this._arr[index];
+    }
+    toArray() {
+      return [...this._arr];
+    }
+    toJSON() {
+      return [...this._arr];
+    }
+    get length() {
+      return this._arr.length;
+    }
+    forEach(fn: (value: any, index: number, array: any[]) => void) {
+      this._arr.forEach(fn);
+    }
+    map(fn: Function) {
+      return this._arr.map(fn as any);
+    }
     observe() {}
     unobserve() {}
   }
@@ -99,7 +153,18 @@ mock.module('yjs', () => {
       if (!this._arrays.has(name)) this._arrays.set(name, new MockYArray());
       return this._arrays.get(name)!;
     }
-    getXmlFragment(name: string) { return { insert() {}, delete() {}, get length() { return 0; }, toArray() { return []; } }; }
+    getXmlFragment(name: string) {
+      return {
+        insert() {},
+        delete() {},
+        get length() {
+          return 0;
+        },
+        toArray() {
+          return [];
+        },
+      };
+    }
     transact(fn: Function, origin?: any) {
       fn();
       const fns = this._listeners.get('update') || [];
@@ -110,7 +175,9 @@ mock.module('yjs', () => {
       this._listeners.get(event)!.push(fn);
     }
     off() {}
-    destroy() { this._listeners.clear(); }
+    destroy() {
+      this._listeners.clear();
+    }
   }
 
   class MockUndoManager {
@@ -157,7 +224,10 @@ mock.module('yjs', () => {
     }
 
     destroy() {}
-    clear() { this._undoStack.length = 0; this._redoStack.length = 0; }
+    clear() {
+      this._undoStack.length = 0;
+      this._redoStack.length = 0;
+    }
   }
 
   return {
@@ -169,7 +239,8 @@ mock.module('yjs', () => {
     encodeStateAsUpdate: () => new Uint8Array(0),
     encodeStateVector: () => new Uint8Array(0),
     applyUpdate: () => {},
-    transact: (doc: any, fn: Function, origin?: any) => doc.transact(fn, origin),
+    transact: (doc: any, fn: Function, origin?: any) =>
+      doc.transact(fn, origin),
     diffUpdate: (update: Uint8Array) => update,
     mergeUpdates: (updates: Uint8Array[]) => updates[0] || new Uint8Array(0),
   };
@@ -347,7 +418,14 @@ describe('CrdtBridge', () => {
       await bridge.connect();
       await bridge.openFile('src/main.ts');
       bridge.shareDiagnostics('src/main.ts', [
-        { filePath: 'src/main.ts', line: 5, column: 1, severity: 'error', message: 'Type error', source: 'ts' },
+        {
+          filePath: 'src/main.ts',
+          line: 5,
+          column: 1,
+          severity: 'error',
+          message: 'Type error',
+          source: 'ts',
+        },
       ]);
 
       const diags = bridge.getDiagnostics('src/main.ts');
@@ -361,10 +439,24 @@ describe('CrdtBridge', () => {
       await bridge.openFile('src/main.ts');
 
       bridge.shareDiagnostics('src/main.ts', [
-        { filePath: 'src/main.ts', line: 1, column: 1, severity: 'error', message: 'First', source: 'ts' },
+        {
+          filePath: 'src/main.ts',
+          line: 1,
+          column: 1,
+          severity: 'error',
+          message: 'First',
+          source: 'ts',
+        },
       ]);
       bridge.shareDiagnostics('src/main.ts', [
-        { filePath: 'src/main.ts', line: 2, column: 1, severity: 'warning', message: 'Second', source: 'ts' },
+        {
+          filePath: 'src/main.ts',
+          line: 2,
+          column: 1,
+          severity: 'warning',
+          message: 'Second',
+          source: 'ts',
+        },
       ]);
 
       const diags = bridge.getDiagnostics('src/main.ts');
@@ -406,8 +498,18 @@ describe('CrdtBridge', () => {
       await bridge.connect();
       await bridge.openFile('src/main.ts');
 
-      bridge.addAnnotation('src/main.ts', { blockId: 'b1', content: 'A', type: 'comment', line: 1 });
-      bridge.addAnnotation('src/main.ts', { blockId: 'b2', content: 'B', type: 'question', line: 2 });
+      bridge.addAnnotation('src/main.ts', {
+        blockId: 'b1',
+        content: 'A',
+        type: 'comment',
+        line: 1,
+      });
+      bridge.addAnnotation('src/main.ts', {
+        blockId: 'b2',
+        content: 'B',
+        type: 'question',
+        line: 2,
+      });
 
       const anns = bridge.getAnnotations('src/main.ts');
       expect(anns.length).toBe(2);
@@ -416,7 +518,12 @@ describe('CrdtBridge', () => {
     test('addAnnotation throws for unopened file', async () => {
       await bridge.connect();
       expect(() => {
-        bridge.addAnnotation('nope.ts', { blockId: 'b1', content: 'x', type: 'comment', line: 1 });
+        bridge.addAnnotation('nope.ts', {
+          blockId: 'b1',
+          content: 'x',
+          type: 'comment',
+          line: 1,
+        });
       }).toThrow('File not open: nope.ts');
     });
 
@@ -492,8 +599,12 @@ describe('CrdtBridge', () => {
       await bridge.connect();
 
       bridge.tagEmotion('src/main.ts', {
-        blockId: 'block-1', emotion: 'frustration',
-        valence: -0.4, arousal: 0.6, dominance: 0.5, intensity: 0.3,
+        blockId: 'block-1',
+        emotion: 'frustration',
+        valence: -0.4,
+        arousal: 0.6,
+        dominance: 0.5,
+        intensity: 0.3,
       });
 
       const dominant = bridge.getDominantEmotion('src/main.ts', 'block-1');
@@ -503,7 +614,9 @@ describe('CrdtBridge', () => {
 
     test('getDominantEmotion returns null for no tags', async () => {
       await bridge.connect();
-      expect(bridge.getDominantEmotion('src/main.ts', 'nonexistent')).toBeNull();
+      expect(
+        bridge.getDominantEmotion('src/main.ts', 'nonexistent')
+      ).toBeNull();
     });
 
     test('getEmotionTags returns empty before connect', () => {

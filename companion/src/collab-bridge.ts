@@ -71,9 +71,18 @@ export interface CollabPresenceUpdate {
 
 // Participant colors for collaborative editing
 const COLLAB_COLORS = [
-  '#3b82f6', '#ef4444', '#10b981', '#f59e0b',
-  '#8b5cf6', '#ec4899', '#06b6d4', '#f97316',
-  '#6366f1', '#14b8a6', '#e11d48', '#84cc16',
+  '#3b82f6',
+  '#ef4444',
+  '#10b981',
+  '#f59e0b',
+  '#8b5cf6',
+  '#ec4899',
+  '#06b6d4',
+  '#f97316',
+  '#6366f1',
+  '#14b8a6',
+  '#e11d48',
+  '#84cc16',
 ];
 
 // ---------------------------------------------------------------------------
@@ -126,7 +135,11 @@ export class CollabBridge {
   /**
    * Join an existing session.
    */
-  joinSession(sessionId: string, peerId: string, displayName: string): CollabParticipant | null {
+  joinSession(
+    sessionId: string,
+    peerId: string,
+    displayName: string
+  ): CollabParticipant | null {
     const session = this.sessions.get(sessionId);
     if (!session) return null;
 
@@ -170,7 +183,8 @@ export class CollabBridge {
     if (!participant) return;
 
     if (update.cursor !== undefined) participant.cursor = update.cursor;
-    if (update.selection !== undefined) participant.selection = update.selection;
+    if (update.selection !== undefined)
+      participant.selection = update.selection;
     if (update.activity !== undefined) participant.activity = update.activity;
     participant.lastActiveAt = Date.now();
     participant.status = 'active';

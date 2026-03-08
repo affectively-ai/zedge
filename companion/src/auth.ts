@@ -87,18 +87,15 @@ export async function login(): Promise<{
 
         // Exchange code for token
         try {
-          const tokenResp = await fetch(
-            `${config.apiBaseUrl}/auth/token`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                code,
-                redirect_uri: redirectUri,
-                grant_type: 'authorization_code',
-              }),
-            }
-          );
+          const tokenResp = await fetch(`${config.apiBaseUrl}/auth/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code,
+              redirect_uri: redirectUri,
+              grant_type: 'authorization_code',
+            }),
+          });
 
           if (!tokenResp.ok) {
             throw new Error(`Token exchange failed: ${tokenResp.status}`);
@@ -146,7 +143,11 @@ export async function login(): Promise<{
     });
 
     server.listen(callbackPort, () => {
-      const authUrl = `${config.apiBaseUrl}/auth/login?redirect_uri=${encodeURIComponent(redirectUri)}&client=zedge`;
+      const authUrl = `${
+        config.apiBaseUrl
+      }/auth/login?redirect_uri=${encodeURIComponent(
+        redirectUri
+      )}&client=zedge`;
 
       // Open browser
       const { exec } = require('child_process');
@@ -154,8 +155,8 @@ export async function login(): Promise<{
         process.platform === 'darwin'
           ? 'open'
           : process.platform === 'win32'
-            ? 'start'
-            : 'xdg-open';
+          ? 'start'
+          : 'xdg-open';
 
       exec(`${openCmd} "${authUrl}"`, (err: Error | null) => {
         if (err) {
@@ -206,9 +207,7 @@ export function whoami(): {
   // Check token first
   try {
     if (existsSync(TOKEN_FILE)) {
-      const token = JSON.parse(
-        readFileSync(TOKEN_FILE, 'utf-8')
-      ) as AuthToken;
+      const token = JSON.parse(readFileSync(TOKEN_FILE, 'utf-8')) as AuthToken;
       if (token.expiresAt > Date.now()) {
         return {
           authenticated: true,

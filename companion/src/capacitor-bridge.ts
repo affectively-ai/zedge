@@ -153,7 +153,12 @@ export class CapacitorBridge {
   getLayout(mountId: string, maxBlocks = 50): LayoutSolution {
     const mount = this.mounts.get(mountId);
     if (!mount) {
-      return { mountId, blocks: [], totalValue: 0, constraintsSatisfied: false };
+      return {
+        mountId,
+        blocks: [],
+        totalValue: 0,
+        constraintsSatisfied: false,
+      };
     }
 
     const layoutBlocks: LayoutBlock[] = [];
@@ -167,11 +172,20 @@ export class CapacitorBridge {
 
       // Calculate value: emotion intensity × relevance × freshness × engagement
       const emotionValue = amygdala ? amygdala.intensity : 0.5;
-      const relevanceValue = hippocampus ? hippocampus.entities.length * 0.1 + 0.5 : 0.5;
-      const freshnessValue = Math.max(0.1, 1 - (Date.now() - (hippocampus?.indexedAt ?? 0)) / 86_400_000);
+      const relevanceValue = hippocampus
+        ? hippocampus.entities.length * 0.1 + 0.5
+        : 0.5;
+      const freshnessValue = Math.max(
+        0.1,
+        1 - (Date.now() - (hippocampus?.indexedAt ?? 0)) / 86_400_000
+      );
       const engagementValue = metrics ? Math.min(1, metrics.engagement) : 0.3;
 
-      const value = emotionValue * 0.3 + relevanceValue * 0.3 + freshnessValue * 0.2 + engagementValue * 0.2;
+      const value =
+        emotionValue * 0.3 +
+        relevanceValue * 0.3 +
+        freshnessValue * 0.2 +
+        engagementValue * 0.2;
       const weight = block.endLine - block.startLine + 1;
 
       let renderMode: LayoutBlock['renderMode'] = 'full';

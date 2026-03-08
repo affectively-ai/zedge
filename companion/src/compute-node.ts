@@ -10,7 +10,12 @@
  * - billing headers (X-Edgework-Debt-Mode, X-Edgework-Debt-Max)
  */
 
-import { getZedgeConfig, getEdgeworkConfig, saveZedgeConfig, getApiKey } from './config';
+import {
+  getZedgeConfig,
+  getEdgeworkConfig,
+  saveZedgeConfig,
+  getApiKey,
+} from './config';
 import {
   connectToMesh,
   disconnectFromMesh,
@@ -114,7 +119,9 @@ export async function joinPool(): Promise<ComputePoolStatus> {
 
   const bridge = getBridgeStatus();
   console.log(
-    `[zedge] Joined compute pool — WASM bridge: ${bridge.wasmAvailable ? 'yes' : 'no'}, ` +
+    `[zedge] Joined compute pool — WASM bridge: ${
+      bridge.wasmAvailable ? 'yes' : 'no'
+    }, ` +
       `nodes: ${result.nodeCount}, max CPU: ${config.computePool.maxCpuPercent}%, ` +
       `max memory: ${config.computePool.maxMemoryMb}MB`
   );
@@ -277,9 +284,8 @@ export function updateMarketPrice(
   totalSupplyNodes: number,
   totalDemandRequests: number
 ): void {
-  const ratio = totalSupplyNodes > 0
-    ? totalDemandRequests / totalSupplyNodes
-    : 1;
+  const ratio =
+    totalSupplyNodes > 0 ? totalDemandRequests / totalSupplyNodes : 1;
 
   marketState.supplyDemandRatio = ratio;
 
@@ -306,9 +312,10 @@ export function getMarketStatus(): ComputeMarketStatus {
         ? (Date.now() - poolState.startTime) / 3_600_000
         : 0,
       modelsHosted: config.computePool.allowedModels,
-      averageLatencyMs: marketState.latencySamples > 0
-        ? marketState.totalLatencyMs / marketState.latencySamples
-        : 0,
+      averageLatencyMs:
+        marketState.latencySamples > 0
+          ? marketState.totalLatencyMs / marketState.latencySamples
+          : 0,
       peakRequestsPerMinute: marketState.peakRpm,
     },
     debtLedger: {

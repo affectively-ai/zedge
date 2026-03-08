@@ -1,8 +1,5 @@
 import { describe, test, expect, beforeEach } from 'bun:test';
-import {
-  getPoolStatus,
-  recordServedRequest,
-} from '../compute-node';
+import { getPoolStatus, recordServedRequest } from '../compute-node';
 
 describe('Compute Node', () => {
   test('initial pool status is not joined', () => {

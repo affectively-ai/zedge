@@ -11,7 +11,11 @@ import {
   DataType,
   CONTENT_TYPE,
 } from '../binary-protocol';
-import type { Tensor, InferenceFrame, TensorDescriptor } from '../binary-protocol';
+import type {
+  Tensor,
+  InferenceFrame,
+  TensorDescriptor,
+} from '../binary-protocol';
 
 describe('Binary Protocol v2', () => {
   test('CONTENT_TYPE is application/x-infer2', () => {
@@ -93,9 +97,7 @@ describe('Binary Protocol v2', () => {
     const decoded = decode(encode(frame));
 
     expect(decoded.tensors[0].descriptor.archType).toBe(ArchType.SSM);
-    expect(decoded.tensors[0].descriptor.tensorType).toBe(
-      TensorType.SSM_State
-    );
+    expect(decoded.tensors[0].descriptor.tensorType).toBe(TensorType.SSM_State);
     expect(decoded.tensors[0].descriptor.dimensions).toEqual([3, 4]);
     expect(toFloat32(decoded.tensors[0]).length).toBe(12);
   });

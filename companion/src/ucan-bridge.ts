@@ -89,14 +89,26 @@ function processExecCap(workspaceId: string, pattern: string): UcanCapability {
 }
 
 function presenceCap(workspaceId: string): UcanCapability {
-  return { can: 'zedge/presence/join', with: zedgeResource(workspaceId, '__presence') };
+  return {
+    can: 'zedge/presence/join',
+    with: zedgeResource(workspaceId, '__presence'),
+  };
 }
 
-function capacitorCap(workspaceId: string, access: 'read' | 'write'): UcanCapability {
-  return { can: `zedge/capacitor/${access}`, with: zedgeResource(workspaceId, '__capacitor') };
+function capacitorCap(
+  workspaceId: string,
+  access: 'read' | 'write'
+): UcanCapability {
+  return {
+    can: `zedge/capacitor/${access}`,
+    with: zedgeResource(workspaceId, '__capacitor'),
+  };
 }
 
-export function getAgentCapabilities(workspaceId: string, mode: AgentMode): UcanCapability[] {
+export function getAgentCapabilities(
+  workspaceId: string,
+  mode: AgentMode
+): UcanCapability[] {
   switch (mode) {
     case 'review':
       return [
@@ -130,7 +142,7 @@ export function getAgentCapabilities(workspaceId: string, mode: AgentMode): Ucan
 export function getFileCapabilities(
   workspaceId: string,
   path: string,
-  access: 'read' | 'write' | 'read_write',
+  access: 'read' | 'write' | 'read_write'
 ): UcanCapability[] {
   const caps: UcanCapability[] = [presenceCap(workspaceId)];
   if (access === 'read' || access === 'read_write') {
@@ -145,7 +157,7 @@ export function getFileCapabilities(
 export function getDirectoryCapabilities(
   workspaceId: string,
   dirPath: string,
-  access: 'read' | 'write' | 'read_write',
+  access: 'read' | 'write' | 'read_write'
 ): UcanCapability[] {
   const pattern = dirPath.endsWith('/') ? `${dirPath}*` : `${dirPath}/*`;
   const caps: UcanCapability[] = [presenceCap(workspaceId)];
@@ -190,7 +202,7 @@ export class UcanBridge {
   async init(): Promise<void> {
     this.issuer = await deriveDeterministicP256IssuerFromSecret(
       this.config.secret,
-      { context: 'ghostwriter/ucan' },
+      { context: 'ghostwriter/ucan' }
     );
   }
 
@@ -198,7 +210,8 @@ export class UcanBridge {
    * Get our DID (issuer identity).
    */
   getDid(): string {
-    if (!this.issuer) throw new Error('UcanBridge not initialized — call init() first');
+    if (!this.issuer)
+      throw new Error('UcanBridge not initialized — call init() first');
     return this.issuer.did;
   }
 
@@ -221,7 +234,7 @@ export class UcanBridge {
     audienceDid: string,
     capabilities: UcanCapability[],
     expirationSeconds: number = EXPIRY.ONE_HOUR,
-    facts?: Record<string, unknown>,
+    facts?: Record<string, unknown>
   ): Promise<IssuedUcanToken> {
     if (!this.issuer) throw new Error('UcanBridge not initialized');
 
@@ -247,14 +260,21 @@ export class UcanBridge {
   async issueAgentToken(
     agentDid: string,
     mode: AgentMode,
-    expirationSeconds: number = EXPIRY.FOUR_HOURS,
+    expirationSeconds: number = EXPIRY.FOUR_HOURS
   ): Promise<IssuedUcanToken & { mode: AgentMode }> {
     const capabilities = getAgentCapabilities(this.config.workspaceId, mode);
-    const token = await this.issueToken(agentDid, capabilities, expirationSeconds, {
-      agentMode: mode,
-    });
+    const token = await this.issueToken(
+      agentDid,
+      capabilities,
+      expirationSeconds,
+      {
+        agentMode: mode,
+      }
+    );
 
-    const grantId = `grant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const grantId = `grant-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
     this.grants.set(grantId, {
       id: grantId,
       audienceDid: agentDid,
@@ -280,7 +300,7 @@ export class UcanBridge {
       access?: 'read' | 'write' | 'read_write';
       expirationSeconds?: number;
       label?: string;
-    } = {},
+    } = {}
   ): Promise<SessionInvite> {
     const access = options.access ?? 'read_write';
     const expiry = options.expirationSeconds ?? EXPIRY.ONE_HOUR;
@@ -289,10 +309,18 @@ export class UcanBridge {
     let roomName: string;
 
     if (options.path) {
-      capabilities = getFileCapabilities(this.config.workspaceId, options.path, access);
+      capabilities = getFileCapabilities(
+        this.config.workspaceId,
+        options.path,
+        access
+      );
       roomName = `zedge:${this.config.workspaceId}:${options.path}`;
     } else if (options.dirPath) {
-      capabilities = getDirectoryCapabilities(this.config.workspaceId, options.dirPath, access);
+      capabilities = getDirectoryCapabilities(
+        this.config.workspaceId,
+        options.dirPath,
+        access
+      );
       roomName = `zedge:${this.config.workspaceId}:${options.dirPath}`;
     } else {
       // Full workspace access
@@ -311,7 +339,9 @@ export class UcanBridge {
 
     const token = await this.issueToken(audienceDid, capabilities, expiry);
 
-    const grantId = `grant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const grantId = `grant-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
     this.grants.set(grantId, {
       id: grantId,
       audienceDid,
@@ -323,7 +353,9 @@ export class UcanBridge {
       revoked: false,
     });
 
-    const deepLink = `aeon://ghostwriter/join?room=${encodeURIComponent(roomName)}&ucan=${encodeURIComponent(token.token)}`;
+    const deepLink = `aeon://ghostwriter/join?room=${encodeURIComponent(
+      roomName
+    )}&ucan=${encodeURIComponent(token.token)}`;
 
     return {
       token: token.token,
@@ -343,7 +375,7 @@ export class UcanBridge {
       dirPath?: string;
       access?: 'read' | 'write' | 'read_write';
       expirationSeconds?: number;
-    } = {},
+    } = {}
   ): Promise<SessionInvite> {
     return this.createInvite('did:key:*', { ...options, label: 'open invite' });
   }
@@ -357,7 +389,7 @@ export class UcanBridge {
    */
   async verifyToken(
     token: string,
-    requiredCapabilities?: UcanCapability[],
+    requiredCapabilities?: UcanCapability[]
   ): Promise<VerifyUcanResult> {
     if (!this.issuer) throw new Error('UcanBridge not initialized');
 

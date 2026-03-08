@@ -26,9 +26,7 @@ const MODE_CAPABILITIES: Record<ZedgeAccessMode, ZedgeCapability[]> = {
     { resource: 'zedge/annotations', action: '*' },
     { resource: 'zedge/cursor', action: '*' },
   ],
-  autonomousMode: [
-    { resource: 'zedge/*', action: '*' },
-  ],
+  autonomousMode: [{ resource: 'zedge/*', action: '*' }],
 };
 
 export interface RoomUcanPayload {
@@ -72,7 +70,7 @@ export function generateRoomUcan(
   audience: string,
   roomName: string,
   capabilities: ZedgeCapability[],
-  ttlMs: number = 15 * 60 * 1000,
+  ttlMs: number = 15 * 60 * 1000
 ): RoomUcanToken {
   const now = Date.now();
   const payload: RoomUcanPayload = {
@@ -85,7 +83,9 @@ export function generateRoomUcan(
     nonce: crypto.randomUUID(),
   };
 
-  const header = base64UrlEncode(JSON.stringify({ alg: 'none', typ: 'JWT', ucv: '0.10.0' }));
+  const header = base64UrlEncode(
+    JSON.stringify({ alg: 'none', typ: 'JWT', ucv: '0.10.0' })
+  );
   const body = base64UrlEncode(JSON.stringify(payload));
   const token = `${header}.${body}.unsigned`;
 
@@ -118,7 +118,9 @@ export function isRoomUcanExpired(token: string): boolean {
 /**
  * Get capabilities for a preset access mode.
  */
-export function getCapabilitiesForMode(mode: ZedgeAccessMode): ZedgeCapability[] {
+export function getCapabilitiesForMode(
+  mode: ZedgeAccessMode
+): ZedgeCapability[] {
   return MODE_CAPABILITIES[mode];
 }
 
@@ -127,10 +129,11 @@ export function getCapabilitiesForMode(mode: ZedgeAccessMode): ZedgeCapability[]
  */
 export function capabilitySatisfies(
   granted: ZedgeCapability[],
-  required: ZedgeCapability,
+  required: ZedgeCapability
 ): boolean {
   return granted.some((g) => {
-    const resourceMatch = g.resource === required.resource || g.resource === 'zedge/*';
+    const resourceMatch =
+      g.resource === required.resource || g.resource === 'zedge/*';
     const actionMatch = g.action === required.action || g.action === '*';
     return resourceMatch && actionMatch;
   });
@@ -143,11 +146,19 @@ export function generateInvite(
   issuer: string,
   roomName: string,
   mode: ZedgeAccessMode,
-  ttlMs: number = 15 * 60 * 1000,
+  ttlMs: number = 15 * 60 * 1000
 ): InviteToken {
   const capabilities = getCapabilitiesForMode(mode);
-  const { token, payload } = generateRoomUcan(issuer, '*', roomName, capabilities, ttlMs);
-  const deepLinkUrl = `aeon://zedge/join?token=${encodeURIComponent(token)}&room=${encodeURIComponent(roomName)}`;
+  const { token, payload } = generateRoomUcan(
+    issuer,
+    '*',
+    roomName,
+    capabilities,
+    ttlMs
+  );
+  const deepLinkUrl = `aeon://zedge/join?token=${encodeURIComponent(
+    token
+  )}&room=${encodeURIComponent(roomName)}`;
 
   return {
     token,

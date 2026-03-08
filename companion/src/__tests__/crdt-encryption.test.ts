@@ -5,7 +5,9 @@ const mockDoc = { on() {}, off() {}, destroy() {}, clientID: 1 } as any;
 
 describe('CrdtEncryptionProvider', () => {
   test('encrypt -> decrypt roundtrip preserves data', () => {
-    const provider = new CrdtEncryptionProvider(mockDoc, { passphrase: 'test-secret' });
+    const provider = new CrdtEncryptionProvider(mockDoc, {
+      passphrase: 'test-secret',
+    });
     const original = new Uint8Array([1, 2, 3, 4, 5, 72, 101, 108, 108, 111]);
 
     const encrypted = provider.encrypt(original);
@@ -46,7 +48,9 @@ describe('CrdtEncryptionProvider', () => {
   });
 
   test('destroy cleans up', () => {
-    const provider = new CrdtEncryptionProvider(mockDoc, { passphrase: 'test' });
+    const provider = new CrdtEncryptionProvider(mockDoc, {
+      passphrase: 'test',
+    });
     provider.destroy();
     // No errors
   });

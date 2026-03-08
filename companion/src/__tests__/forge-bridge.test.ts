@@ -6,7 +6,15 @@ import { tmpdir } from 'node:os';
 
 const TEST_DIR = join(tmpdir(), `zedge-forge-test-${Date.now()}`);
 
-function setupWorkspace(projects: Array<{ name: string; dir: string; kind?: string; port?: number; buildCommand?: string }>): void {
+function setupWorkspace(
+  projects: Array<{
+    name: string;
+    dir: string;
+    kind?: string;
+    port?: number;
+    buildCommand?: string;
+  }>
+): void {
   mkdirSync(TEST_DIR, { recursive: true });
   for (const p of projects) {
     const projectDir = join(TEST_DIR, p.dir);
@@ -22,10 +30,7 @@ function setupWorkspace(projects: Array<{ name: string; dir: string; kind?: stri
     writeFileSync(join(projectDir, 'aeon.toml'), toml);
     // Create a minimal entry point
     mkdirSync(join(projectDir, 'src'), { recursive: true });
-    writeFileSync(
-      join(projectDir, 'src/index.ts'),
-      'console.log("hello");'
-    );
+    writeFileSync(join(projectDir, 'src/index.ts'), 'console.log("hello");');
   }
 }
 
@@ -197,7 +202,12 @@ describe('ForgeBridge', () => {
 
   test('discovers project config fields correctly', async () => {
     setupWorkspace([
-      { name: 'config-app', dir: 'apps/config-app', kind: 'worker', port: 5000 },
+      {
+        name: 'config-app',
+        dir: 'apps/config-app',
+        kind: 'worker',
+        port: 5000,
+      },
     ]);
 
     const bridge = new ForgeBridge(TEST_DIR);
