@@ -1691,12 +1691,11 @@ async function tryEdgeCoordinator(request, signal) {
     "Content-Type": "application/json",
     ...authHeaders
   };
-  const edgeRequest = { ...request, stream: false };
-  logInference(`[edge] \u2192 ${baseUrl}/v1/chat/completions model=${request.model} headers=${JSON.stringify(Object.keys(authHeaders))}`);
+  logInference(`[edge] \u2192 ${baseUrl}/v1/chat/completions model=${request.model} stream=${request.stream} headers=${JSON.stringify(Object.keys(authHeaders))}`);
   const resp = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: "POST",
     headers,
-    body: JSON.stringify(edgeRequest),
+    body: JSON.stringify(request),
     signal
   });
   const respHeaders = {};
@@ -1722,11 +1721,10 @@ async function tryCloudRunCoordinator(request, signal) {
     } else {
       logInference(`[cloudrun] \u2192 retry ${attempt}/${MAX_RETRIES} model=${request.model}`);
     }
-    const cloudRunRequest = { ...request, stream: false };
     const resp = await fetch(`${coordinatorUrl}/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(cloudRunRequest),
+      body: JSON.stringify(request),
       signal
     });
     const respHeaders = {};
@@ -4362,30 +4360,39 @@ async function handleRequest(req) {
     if (request.stream) {
       const data2 = await result.response.json();
       const content = data2?.choices?.[0]?.message?.content ?? "";
+      const id = data2.id ?? `chatcmpl-${Date.now()}`;
+      const created = data2.created ?? Math.floor(Date.now() / 1000);
+      const model = data2.model ?? request.model;
       const encoder = new TextEncoder;
+      const tokens = content.match(/\S+\s*/g) ?? [content];
       const sseStream = new ReadableStream({
-        start(controller) {
-          const chunk = {
-            id: data2.id ?? `chatcmpl-${Date.now()}`,
-            object: "chat.completion.chunk",
-            created: data2.created ?? Math.floor(Date.now() / 1000),
-            model: data2.model ?? request.model,
-            choices: [
-              {
-                index: 0,
-                delta: { role: "assistant", content },
-                finish_reason: null
-              }
-            ]
-          };
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}
+        async start(controller) {
+          for (let i = 0;i < tokens.length; i++) {
+            const chunk = {
+              id,
+              object: "chat.completion.chunk",
+              created,
+              model,
+              choices: [
+                {
+                  index: 0,
+                  delta: i === 0 ? { role: "assistant", content: tokens[i] } : { content: tokens[i] },
+                  finish_reason: null
+                }
+              ]
+            };
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}
 
 `));
+            if (i < tokens.length - 1) {
+              await new Promise((r) => setTimeout(r, 30));
+            }
+          }
           const finishChunk = {
-            id: data2.id ?? `chatcmpl-${Date.now()}`,
+            id,
             object: "chat.completion.chunk",
-            created: data2.created ?? Math.floor(Date.now() / 1000),
-            model: data2.model ?? request.model,
+            created,
+            model,
             choices: [
               {
                 index: 0,

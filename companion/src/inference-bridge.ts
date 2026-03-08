@@ -172,16 +172,12 @@ async function tryEdgeCoordinator(
     ...authHeaders,
   };
 
-  // Force non-streaming for edge coordinator too — the companion handles
-  // JSON → SSE conversion for Zed. This avoids coordinator SSE bugs and
-  // ensures consistent behavior across all tiers.
-  const edgeRequest = { ...request, stream: false };
-  logInference(`[edge] → ${baseUrl}/v1/chat/completions model=${request.model} headers=${JSON.stringify(Object.keys(authHeaders))}`);
+  logInference(`[edge] → ${baseUrl}/v1/chat/completions model=${request.model} stream=${request.stream} headers=${JSON.stringify(Object.keys(authHeaders))}`);
 
   const resp = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(edgeRequest),
+    body: JSON.stringify(request),
     signal,
   });
 
@@ -223,14 +219,10 @@ async function tryCloudRunCoordinator(
       logInference(`[cloudrun] → retry ${attempt}/${MAX_RETRIES} model=${request.model}`);
     }
 
-    // Force non-streaming for direct Cloud Run calls. The coordinator's
-    // streaming mode is broken (returns 0 data events). Non-streaming works
-    // perfectly — the companion converts JSON → SSE for Zed.
-    const cloudRunRequest = { ...request, stream: false };
     const resp = await fetch(`${coordinatorUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cloudRunRequest),
+      body: JSON.stringify(request),
       signal,
     });
 
