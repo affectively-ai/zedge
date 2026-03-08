@@ -594,10 +594,11 @@ export function createSSEProxyStream(
       let sawDone = false;
       const streamStart = Date.now();
       let lineBuf = '';
-      // Track prefill progress to emit as visible content in Zed.
-      // We emit a status line during prefill, then a separator before real tokens.
-      let emittedPrefillHeader = false;
+      // Track prefill and debug info via reasoning_content (Zed's thinking UI).
+      // Zed parses `reasoning_content` from deltas and renders in a thinking panel,
+      // keeping debug info separate from the response content.
       let lastPrefillPct = -1;
+      let reasoningStarted = false;
       const progressId = `chatcmpl-progress-${Date.now()}`;
       const progressCreated = Math.floor(Date.now() / 1000);
 
@@ -626,21 +627,24 @@ export function createSSEProxyStream(
               } else if (!firstDataLogged) {
                 firstDataLogged = true;
                 logInference(`[sse-proxy] tier=${tier} first-data: ${payload.slice(0, 200)}`);
-                // If we emitted prefill progress, insert a newline separator
-                // before the real response content starts.
-                if (emittedPrefillHeader) {
-                  const sepChunk = {
+                // Emit chain debug info as reasoning_content (shown in Zed's thinking UI)
+                if (!reasoningStarted) {
+                  reasoningStarted = true;
+                  const chainInfo = attempts?.length
+                    ? attempts.map((a) => `${a.tier}:${a.status}(${a.ms}ms)`).join(' → ')
+                    : tier;
+                  const debugChunk = {
                     id: progressId,
                     object: 'chat.completion.chunk',
                     created: progressCreated,
                     model: tier,
                     choices: [{
                       index: 0,
-                      delta: { content: '\n\n' },
+                      delta: { reasoning_content: `[${chainInfo}]\n` },
                       finish_reason: null,
                     }],
                   };
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(sepChunk)}\n\n`));
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(debugChunk)}\n\n`));
                 }
               }
               controller.enqueue(encoder.encode(line + '\n'));
@@ -650,24 +654,16 @@ export function createSSEProxyStream(
               // Log upstream comments (heartbeat, prefill) but don't forward raw
               logInference(`[sse-proxy] tier=${tier} upstream: ${line.slice(0, 100)}`);
 
-              // Convert prefill progress comments into visible SSE data events.
-              // Format: `: prefill 8/291` → emit as content so Zed shows progress.
+              // Convert prefill progress into reasoning_content (Zed's thinking UI).
+              // Format: `: prefill 8/291` → emit as reasoning_content delta.
               const prefillMatch = line.match(/^: prefill (\d+)\/(\d+)/);
-              if (prefillMatch && !firstDataLogged) {
+              if (prefillMatch) {
                 const pos = parseInt(prefillMatch[1], 10);
                 const total = parseInt(prefillMatch[2], 10);
                 const pct = Math.floor((pos / total) * 100);
-                // Emit at milestones: 0%, every 25%, and 100%
-                if (!emittedPrefillHeader || pct >= lastPrefillPct + 25 || pos === total) {
+                // Emit at milestones: every 25% and 100%
+                if (pct >= lastPrefillPct + 25 || pos === total) {
                   lastPrefillPct = pct;
-                  const filled = Math.round(pct / 10);
-                  const empty = 10 - filled;
-                  const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(empty);
-                  const isFirst = !emittedPrefillHeader;
-                  const label = isFirst
-                    ? `*Prefill ${bar} ${pct}%*`
-                    : ` ${bar} ${pct}%`;
-                  emittedPrefillHeader = true;
                   const progressChunk = {
                     id: progressId,
                     object: 'chat.completion.chunk',
@@ -675,9 +671,7 @@ export function createSSEProxyStream(
                     model: tier,
                     choices: [{
                       index: 0,
-                      delta: isFirst
-                        ? { role: 'assistant', content: label }
-                        : { content: label },
+                      delta: { reasoning_content: `prefill ${pos}/${total} (${pct}%)\n` },
                       finish_reason: null,
                     }],
                   };
@@ -703,10 +697,30 @@ export function createSSEProxyStream(
         );
       } finally {
         clearInterval(heartbeat);
+        // Emit usage/debug summary as reasoning_content before closing
+        const elapsed = Date.now() - streamStart;
+        if (dataEventCount > 0) {
+          const usageChunk = {
+            id: progressId,
+            object: 'chat.completion.chunk',
+            created: progressCreated,
+            model: tier,
+            choices: [{
+              index: 0,
+              delta: { reasoning_content: `\n---\ntier: ${tier} | ${dataEventCount} tokens | ${elapsed}ms | ${totalBytes}B\n` },
+              finish_reason: null,
+            }],
+            usage: {
+              prompt_tokens: 0,
+              completion_tokens: dataEventCount,
+              total_tokens: dataEventCount,
+            },
+          };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(usageChunk)}\n\n`));
+        }
         if (!sawDone) {
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         }
-        const elapsed = Date.now() - streamStart;
         logInference(`[sse-proxy] tier=${tier} stream-end: ${totalBytes}B ${dataEventCount} data-events sawDone=${sawDone} ${elapsed}ms`);
         try {
           controller.close();
