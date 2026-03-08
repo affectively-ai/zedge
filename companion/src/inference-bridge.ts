@@ -576,15 +576,33 @@ export function createSSEProxyStream(
         return;
       }
 
+      // Guard against writing to a closed controller. All enqueue/close
+      // calls go through these helpers to prevent "Controller is already closed".
+      let closed = false;
+      const enqueue = (chunk: Uint8Array) => {
+        if (closed) return;
+        try {
+          controller.enqueue(chunk);
+        } catch {
+          closed = true;
+        }
+      };
+      const closeController = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          // Already closed
+        }
+      };
+
       // Heartbeat to keep TCP connection alive during long waits
       // (cold starts, prefill, weight loading). Zed's parser ignores
       // non-`data:` lines but the bytes prevent idle connection timeouts.
       const heartbeat = setInterval(() => {
-        try {
-          controller.enqueue(encoder.encode(': heartbeat\n\n'));
-        } catch {
-          clearInterval(heartbeat);
-        }
+        if (closed) { clearInterval(heartbeat); return; }
+        enqueue(encoder.encode(': heartbeat\n\n'));
       }, 5_000);
 
       // SSE stream content logging
@@ -645,7 +663,7 @@ export function createSSEProxyStream(
                       finish_reason: null,
                     }],
                   };
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(debugChunk)}\n\n`));
+                  enqueue(encoder.encode(`data: ${JSON.stringify(debugChunk)}\n\n`));
                 } else if (emittedProgress) {
                   // Close the italic prefill line with chain info, then separator
                   const sep = {
@@ -659,12 +677,12 @@ export function createSSEProxyStream(
                       finish_reason: null,
                     }],
                   };
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(sep)}\n\n`));
+                  enqueue(encoder.encode(`data: ${JSON.stringify(sep)}\n\n`));
                 }
               }
-              controller.enqueue(encoder.encode(line + '\n'));
+              enqueue(encoder.encode(line + '\n'));
             } else if (line === '') {
-              controller.enqueue(encoder.encode('\n'));
+              enqueue(encoder.encode('\n'));
             } else if (line.startsWith(':')) {
               // Log upstream comments (heartbeat, prefill) but don't forward raw
               logInference(`[sse-proxy] tier=${tier} upstream: ${line.slice(0, 100)}`);
@@ -695,7 +713,7 @@ export function createSSEProxyStream(
                         finish_reason: null,
                       }],
                     };
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
+                    enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
                   } else {
                     // content path (italic markdown, visible in chat)
                     const filled = Math.round(pct / 10);
@@ -717,7 +735,7 @@ export function createSSEProxyStream(
                         finish_reason: null,
                       }],
                     };
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
+                    enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
                   }
                 }
               }
@@ -727,7 +745,7 @@ export function createSSEProxyStream(
 
         // Flush remaining buffer
         if (lineBuf.startsWith('data: ')) {
-          controller.enqueue(encoder.encode(lineBuf + '\n\n'));
+          enqueue(encoder.encode(lineBuf + '\n\n'));
           const payload = lineBuf.slice(6).trim();
           if (payload === '[DONE]') sawDone = true;
           else dataEventCount++;
@@ -735,7 +753,7 @@ export function createSSEProxyStream(
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : 'Stream error';
         logInference(`[sse-proxy] tier=${tier} stream-error: ${errMsg}`);
-        controller.enqueue(
+        enqueue(
           encoder.encode(`data: ${JSON.stringify({ error: errMsg })}\n\n`)
         );
       } finally {
@@ -759,16 +777,13 @@ export function createSSEProxyStream(
               total_tokens: dataEventCount,
             },
           };
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(usageChunk)}\n\n`));
+          enqueue(encoder.encode(`data: ${JSON.stringify(usageChunk)}\n\n`));
         }
         if (!sawDone) {
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          enqueue(encoder.encode('data: [DONE]\n\n'));
         }
         logInference(`[sse-proxy] tier=${tier} stream-end: ${totalBytes}B ${dataEventCount} data-events sawDone=${sawDone} ${elapsed}ms`);
-        try {
-          controller.close();
-        } catch {
-          // Already closed
+        closeController();
         }
       }
     },
