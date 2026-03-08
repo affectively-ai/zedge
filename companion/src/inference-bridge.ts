@@ -645,6 +645,10 @@ export function createSSEProxyStream(
       const useReasoning = getZedgeConfig().reasoningContent === true;
       let lastPrefillPct = -1;
       let emittedProgress = false;
+      let prefillStartMs = 0;
+      let lastPrefillMs = 0;
+      let lastPrefillPos = 0;
+      const prefillTokSec: number[] = [];  // tok/s at each checkpoint for sparkline
       const progressId = `chatcmpl-progress-${Date.now()}`;
       const progressCreated = Math.floor(Date.now() / 1000);
 
@@ -692,7 +696,19 @@ export function createSSEProxyStream(
                   };
                   enqueue(encoder.encode(`data: ${JSON.stringify(debugChunk)}\n\n`));
                 } else if (emittedProgress) {
-                  // Close the italic prefill line with chain info, then separator
+                  // Sparkline from per-segment tok/s measurements
+                  const sparks = '\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588';
+                  let sparkline = '';
+                  if (prefillTokSec.length > 0) {
+                    const max = Math.max(...prefillTokSec);
+                    const min = Math.min(...prefillTokSec);
+                    const range = max - min || 1;
+                    sparkline = ' ' + prefillTokSec.map(v =>
+                      sparks[Math.round(((v - min) / range) * (sparks.length - 1))]
+                    ).join('');
+                  }
+                  const prefillMs = Date.now() - prefillStartMs;
+                  // Close the italic prefill line with chain info + sparkline
                   const sep = {
                     id: progressId,
                     object: 'chat.completion.chunk',
@@ -700,7 +716,7 @@ export function createSSEProxyStream(
                     model: tier,
                     choices: [{
                       index: 0,
-                      delta: { content: ` | ${chainInfo}*\n\n` },
+                      delta: { content: `${sparkline} | ${chainInfo} ${prefillMs}ms*\n\n` },
                       finish_reason: null,
                     }],
                   };
@@ -724,11 +740,26 @@ export function createSSEProxyStream(
                 // Emit at start, every 25%, and 100%
                 if (!emittedProgress || pct >= lastPrefillPct + 25 || pos === total) {
                   const isFirst = !emittedProgress;
+                  const now = Date.now();
+                  if (isFirst) {
+                    prefillStartMs = now;
+                    lastPrefillMs = now;
+                    lastPrefillPos = 0;
+                  }
+                  // Track tok/s for this segment
+                  const segmentMs = now - lastPrefillMs;
+                  const segmentToks = pos - lastPrefillPos;
+                  if (segmentMs > 0 && segmentToks > 0) {
+                    prefillTokSec.push(Math.round((segmentToks / segmentMs) * 1000));
+                  }
+                  lastPrefillMs = now;
+                  lastPrefillPos = pos;
                   emittedProgress = true;
                   lastPrefillPct = pct;
 
                   if (useReasoning) {
-                    // reasoning_content path (Zed thinking UI)
+                    const elapsed = now - prefillStartMs;
+                    const avgTokSec = elapsed > 0 ? Math.round((pos / elapsed) * 1000) : 0;
                     const progressChunk = {
                       id: progressId,
                       object: 'chat.completion.chunk',
@@ -736,7 +767,7 @@ export function createSSEProxyStream(
                       model: tier,
                       choices: [{
                         index: 0,
-                        delta: { reasoning_content: `prefill ${pos}/${total} (${pct}%)\n` },
+                        delta: { reasoning_content: `prefill ${pos}/${total} (${pct}%) ${avgTokSec} tok/s\n` },
                         finish_reason: null,
                       }],
                     };
@@ -746,9 +777,12 @@ export function createSSEProxyStream(
                     const filled = Math.round(pct / 10);
                     const empty = 10 - filled;
                     const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(empty);
+                    const elapsed = now - prefillStartMs;
+                    const avgTokSec = elapsed > 0 ? Math.round((pos / elapsed) * 1000) : 0;
+                    const stats = isFirst ? '' : ` ${avgTokSec}t/s`;
                     const label = isFirst
                       ? `*Prefill ${bar} ${pct}%`
-                      : ` ${bar} ${pct}%`;
+                      : ` ${bar} ${pct}%${stats}`;
                     const progressChunk = {
                       id: progressId,
                       object: 'chat.completion.chunk',
