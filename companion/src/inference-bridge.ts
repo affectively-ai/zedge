@@ -743,9 +743,12 @@ export function createSSEProxyStream(
                     enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
                   } else {
                     // content path (italic markdown, visible in chat)
+                    const filled = Math.round(pct / 10);
+                    const empty = 10 - filled;
+                    const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(empty);
                     const label = isFirst
-                      ? `*Prefill ${pct}%`
-                      : `..${pct}%`;
+                      ? `*Prefill ${bar} ${pct}%`
+                      : ` ${bar} ${pct}%`;
                     const progressChunk = {
                       id: progressId,
                       object: 'chat.completion.chunk',
