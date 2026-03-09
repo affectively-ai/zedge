@@ -18,6 +18,10 @@ requires_argument = false
 description = "Toggle compute pool participation and show earnings dashboard"
 requires_argument = false
 
+[slash_commands.zedge-logs]
+description = "Show recent inference logs from the companion"
+requires_argument = false
+
 [slash_commands.zedge-feedback]
 description = "Submit RLHF feedback on response quality"
 requires_argument = false

@@ -15,7 +15,7 @@ import { getApiBaseUrl, getAuthHeaders, getZedgeConfig } from './config';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
-// --- Inference log file ---
+// --- Inference log file + in-memory ring buffer ---
 // import.meta.dir = .../companion/src → go up twice to companion/
 const LOG_DIR = join(import.meta.dir, '..', '..', '.edgework');
 try {
@@ -23,11 +23,23 @@ try {
 } catch {}
 const LOG_FILE = join(LOG_DIR, 'inference.log');
 
+const LOG_RING_MAX = 200;
+const logRing: string[] = [];
+
 function logInference(line: string): void {
   const ts = new Date().toISOString();
+  const entry = `[${ts}] ${line}`;
+  logRing.push(entry);
+  if (logRing.length > LOG_RING_MAX) logRing.shift();
   try {
-    appendFileSync(LOG_FILE, `[${ts}] ${line}\n`);
+    appendFileSync(LOG_FILE, entry + '\n');
   } catch {}
+}
+
+/** Get recent inference logs (most recent last) */
+export function getRecentLogs(count?: number): string[] {
+  const n = count ?? LOG_RING_MAX;
+  return logRing.slice(-n);
 }
 
 export interface ChatMessage {

@@ -9,6 +9,7 @@ import {
   getModels,
   embed,
   createSSEProxyStream,
+  getRecentLogs,
 } from './inference-bridge';
 import type { TierAttempt } from './inference-bridge';
 import { joinPool, leavePool, getPoolStatus } from './compute-node';
@@ -312,6 +313,15 @@ async function handleRequest(req: Request): Promise<Response> {
     });
   }
 
+  // ==================== Logs ====================
+
+  if (path === '/logs' && req.method === 'GET') {
+    const url = new URL(req.url);
+    const count = parseInt(url.searchParams.get('n') ?? '100', 10);
+    const lines = getRecentLogs(count);
+    return jsonResponse({ lines, count: lines.length });
+  }
+
   // ==================== OpenAI-Compatible API ====================
 
   // Chat completions
@@ -357,7 +367,8 @@ async function handleRequest(req: Request): Promise<Response> {
         result.response.body,
         result.tier,
         { ...result.upstreamHeaders, ...attemptHeaders },
-        result.attempts
+        result.attempts,
+        request.model
       );
       return new Response(proxyStream, {
         headers: {

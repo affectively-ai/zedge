@@ -21,6 +21,7 @@ impl zed::Extension for ZedgeExtension {
             "zedge-status" => slash_commands::run_status(worktree),
             "zedge-models" => slash_commands::run_models(),
             "zedge-pool" => slash_commands::run_pool(),
+            "zedge-logs" => slash_commands::run_logs(),
             "zedge-feedback" => slash_commands::run_feedback(),
             _ => Err(format!("Unknown command: {}", command.name)),
         }

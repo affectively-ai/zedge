@@ -172,6 +172,38 @@ pub fn run_pool() -> Result<SlashCommandOutput, String> {
     Ok(output_with_section(text, "Compute Pool"))
 }
 
+/// /zedge-logs — recent inference logs
+pub fn run_logs() -> Result<SlashCommandOutput, String> {
+    match companion_get("/logs?n=100") {
+        Ok(logs_json) => {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&logs_json) {
+                let mut parts: Vec<String> = Vec::new();
+                let count = v["count"].as_u64().unwrap_or(0);
+                parts.push(format!("## Inference Logs ({count} entries)\n"));
+                parts.push("```".to_string());
+                if let Some(lines) = v["lines"].as_array() {
+                    for line in lines {
+                        if let Some(s) = line.as_str() {
+                            parts.push(s.to_string());
+                        }
+                    }
+                }
+                parts.push("```".to_string());
+                let text = parts.join("\n");
+                Ok(output_with_section(text, "Inference Logs"))
+            } else {
+                Ok(output_with_section(format!("```\n{logs_json}\n```"), "Inference Logs"))
+            }
+        }
+        Err(e) => {
+            Ok(output_with_section(
+                format!("**Companion offline**: {e}\n\nStart with: `bun open-source/zedge/companion/src/index.ts`"),
+                "Inference Logs",
+            ))
+        }
+    }
+}
+
 /// /zedge-feedback — RLHF quality feedback
 pub fn run_feedback() -> Result<SlashCommandOutput, String> {
     let text = "Feedback noted. Quality ratings help improve model routing.\n\nTo submit detailed feedback, POST to `http://localhost:7331/feedback` with:\n```json\n{\"model\": \"tinyllama-1.1b\", \"rating\": 4, \"comment\": \"Good response\"}\n```".to_string();
