@@ -24,6 +24,7 @@ impl zed::Extension for ZedgeExtension {
             "zedge-logs" => slash_commands::run_logs(),
             "zedge-clear" => slash_commands::run_clear(),
             "zedge-restart" => slash_commands::run_restart(),
+            "zedgework" => slash_commands::run_edgework(&_args),
             "zedge-admin" => slash_commands::run_admin(&_args),
             "zedge-feedback" => slash_commands::run_feedback(),
             _ => Err(format!("Unknown command: {}", command.name)),
@@ -44,6 +45,31 @@ impl zed::Extension for ZedgeExtension {
                     run_command: true,
                 })
                 .collect()),
+            "zedgework" => {
+                let commands = vec![
+                    ("emotions", "Analyze emotions in text"),
+                    ("sentiment", "Analyze sentiment"),
+                    ("entities", "Extract entities"),
+                    ("embed", "Generate embeddings"),
+                    ("language", "Detect language"),
+                    ("summarize", "Summarize text"),
+                    ("health", "Check API health"),
+                    ("status", "Auth and API status"),
+                    ("whoami", "Show current identity"),
+                    ("dashboard", "Account overview"),
+                    ("usage", "Usage stats"),
+                    ("limits", "Rate limits"),
+                    ("pricing", "View pricing"),
+                    ("keys list", "List API keys"),
+                    ("workflows --list", "List AI workflows"),
+                    ("test", "Test integration"),
+                ];
+                Ok(commands.into_iter().map(|(cmd, desc)| SlashCommandArgumentCompletion {
+                    label: format!("{cmd} — {desc}"),
+                    new_text: cmd.to_string(),
+                    run_command: true,
+                }).collect())
+            }
             "zedge-admin" => {
                 let commands = vec![
                     ("doctor", "Runtime and MCP health diagnostics"),

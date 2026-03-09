@@ -336,6 +336,56 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // ==================== Admin (aeon-cli proxy) ====================
 
+  if (path === '/edgework/commands' && req.method === 'GET') {
+    return jsonResponse({
+      commands: [
+        { name: 'emotions', description: 'Analyze emotions in text', args: '[text]' },
+        { name: 'sentiment', description: 'Analyze sentiment in text', args: '[text]' },
+        { name: 'entities', description: 'Extract entities from text', args: '[text]' },
+        { name: 'embed', description: 'Generate embeddings', args: '[text]', options: '--model small|base|large' },
+        { name: 'language', description: 'Detect language of text', args: '[text]' },
+        { name: 'summarize', description: 'Summarize text', args: '[text]', options: '--style concise|detailed|bullets' },
+        { name: 'health', description: 'Check API health' },
+        { name: 'status', description: 'Auth and API status' },
+        { name: 'whoami', description: 'Show current identity' },
+        { name: 'dashboard', description: 'Account overview' },
+        { name: 'usage', description: 'Usage stats' },
+        { name: 'limits', description: 'Rate limits' },
+        { name: 'pricing', description: 'View pricing' },
+        { name: 'keys list', description: 'List API keys' },
+        { name: 'workflows --list', description: 'List available AI workflows' },
+        { name: 'test', description: 'Test integration' },
+      ],
+    });
+  }
+
+  if (path === '/edgework/exec' && req.method === 'POST') {
+    const body = (await req.json()) as { command?: string };
+    if (!body.command) return jsonResponse({ error: 'command is required' }, 400);
+
+    const cmd = body.command.trim();
+    // Only allow edgework CLI commands
+    if (!cmd.startsWith('edgework ')) {
+      return jsonResponse({ error: 'Only edgework CLI commands are allowed' }, 403);
+    }
+
+    try {
+      const proc = Bun.spawn(['bash', '-c', `bunx ${cmd} --json 2>&1`], {
+        cwd: process.env.AEON_ROOT || process.cwd(),
+        timeout: 30_000,
+      });
+      const output = await new Response(proc.stdout).text();
+      const exitCode = await proc.exited;
+      return jsonResponse({ command: cmd, exitCode, output });
+    } catch (err) {
+      return jsonResponse({
+        command: cmd,
+        exitCode: 1,
+        output: err instanceof Error ? err.message : 'exec failed',
+      }, 500);
+    }
+  }
+
   if (path === '/admin/commands' && req.method === 'GET') {
     return jsonResponse({
       commands: [

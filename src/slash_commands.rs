@@ -249,6 +249,71 @@ pub fn run_restart() -> Result<SlashCommandOutput, String> {
     }
 }
 
+/// /zedgework — run edgework-cli commands (available to all users)
+pub fn run_edgework(args: &[String]) -> Result<SlashCommandOutput, String> {
+    if args.is_empty() {
+        match companion_get("/edgework/commands") {
+            Ok(cmds_json) => {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&cmds_json) {
+                    let mut parts: Vec<String> = Vec::new();
+                    parts.push("## Edgework Commands\n".to_string());
+                    parts.push("Usage: `/zedgework <command> [args]`\n".to_string());
+                    parts.push("| Command | Description |".to_string());
+                    parts.push("|:---|:---|".to_string());
+                    if let Some(commands) = v["commands"].as_array() {
+                        for cmd in commands {
+                            let name = cmd["name"].as_str().unwrap_or("?");
+                            let desc = cmd["description"].as_str().unwrap_or("");
+                            let cmd_args = cmd["args"].as_str().unwrap_or("");
+                            let display = if cmd_args.is_empty() {
+                                format!("`{name}`")
+                            } else {
+                                format!("`{name} {cmd_args}`")
+                            };
+                            parts.push(format!("| {display} | {desc} |"));
+                        }
+                    }
+                    let text = parts.join("\n");
+                    Ok(output_with_section(text, "Edgework"))
+                } else {
+                    Ok(output_with_section(format!("```\n{cmds_json}\n```"), "Edgework"))
+                }
+            }
+            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Edgework")),
+        }
+    } else {
+        let edgework_cmd = format!("edgework {}", args.join(" "));
+        let body = serde_json::json!({ "command": edgework_cmd });
+        let url = format!("{}/edgework/exec", provider::COMPANION_URL);
+
+        match HttpRequest::builder()
+            .method(HttpMethod::Post)
+            .url(&url)
+            .header("Content-Type", "application/json")
+            .body(body.to_string().into_bytes())
+            .redirect_policy(RedirectPolicy::FollowAll)
+            .build()
+            .and_then(|req| req.fetch().map_err(|e| format!("{e}")))
+        {
+            Ok(response) => {
+                let response_text = String::from_utf8(response.body)
+                    .unwrap_or_else(|_| "Invalid UTF-8".to_string());
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&response_text) {
+                    let exit_code = v["exitCode"].as_i64().unwrap_or(-1);
+                    let output = v["output"].as_str().unwrap_or("");
+                    let cmd = v["command"].as_str().unwrap_or(&edgework_cmd);
+                    let status = if exit_code == 0 { "ok" } else { "error" };
+                    let text = format!("## `{cmd}` [{status}]\n\n```\n{output}\n```");
+                    Ok(output_with_section(text, &format!("edgework {}", args[0])))
+                } else {
+                    Ok(output_with_section(format!("```\n{response_text}\n```"), "Edgework"))
+                }
+            }
+            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Edgework")),
+        }
+    }
+}
+
 /// /zedge-admin — run aeon-cli admin commands
 pub fn run_admin(args: &[String]) -> Result<SlashCommandOutput, String> {
     // No args = show available commands

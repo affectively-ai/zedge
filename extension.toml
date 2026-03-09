@@ -30,6 +30,10 @@ requires_argument = false
 description = "Restart the companion sidecar"
 requires_argument = false
 
+[slash_commands.zedgework]
+description = "Run edgework commands — emotions, sentiment, entities, embeddings, usage, and more"
+requires_argument = true
+
 [slash_commands.zedge-admin]
 description = "Run aeon-cli admin commands (ops, fleet, ai, mcp, etc.)"
 requires_argument = true
