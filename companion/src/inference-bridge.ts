@@ -90,16 +90,14 @@ export interface ModelInfo {
 const CLOUD_RUN_COORDINATORS: Record<string, string> = {
   'tinyllama-1.1b':
     'https://inference-tinyllama-coordinator-6ptd7xm6fq-uc.a.run.app',
-  'mistral-7b':
-    'https://inference-7b-coordinator-6ptd7xm6fq-uc.a.run.app',
+  'mistral-7b': 'https://inference-7b-coordinator-6ptd7xm6fq-uc.a.run.app',
   'qwen-2.5-coder-7b':
     'https://inference-qwen-coordinator-6ptd7xm6fq-uc.a.run.app',
   'gemma3-4b-it':
     'https://inference-gemma3-4b-it-coordinator-6ptd7xm6fq-uc.a.run.app',
   'gemma3-1b-it':
     'https://inference-gemma3-1b-it-coordinator-6ptd7xm6fq-uc.a.run.app',
-  'glm-4-9b':
-    'https://inference-glm-4-9b-coordinator-6ptd7xm6fq-uc.a.run.app',
+  'glm-4-9b': 'https://inference-glm-4-9b-coordinator-6ptd7xm6fq-uc.a.run.app',
   'personaplex-7b':
     'https://inference-personaplex-7b-coordinator-6ptd7xm6fq-uc.a.run.app',
   'lfm2.5-1.2b-glm-4.7-flash-thinking':
@@ -129,10 +127,18 @@ function speculativeWarmup(excludeModel?: string): void {
         logInference(`[warmup] ${model} → ${r.status} (${Date.now() - now}ms)`);
       })
       .catch((err) => {
-        logInference(`[warmup] ${model} → ${err instanceof Error ? err.message : 'error'} (${Date.now() - now}ms)`);
+        logInference(
+          `[warmup] ${model} → ${
+            err instanceof Error ? err.message : 'error'
+          } (${Date.now() - now}ms)`
+        );
       });
   }
-  logInference(`[warmup] pinged ${Object.keys(CLOUD_RUN_COORDINATORS).length - (excludeModel ? 1 : 0)} coordinators`);
+  logInference(
+    `[warmup] pinged ${
+      Object.keys(CLOUD_RUN_COORDINATORS).length - (excludeModel ? 1 : 0)
+    } coordinators`
+  );
 }
 
 export interface TierAttempt {
@@ -216,7 +222,11 @@ async function tryEdgeCoordinator(
     ...authHeaders,
   };
 
-  logInference(`[edge] → ${baseUrl}/v1/chat/completions model=${request.model} stream=${request.stream} headers=${JSON.stringify(Object.keys(authHeaders))}`);
+  logInference(
+    `[edge] → ${baseUrl}/v1/chat/completions model=${request.model} stream=${
+      request.stream
+    } headers=${JSON.stringify(Object.keys(authHeaders))}`
+  );
 
   const resp = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
@@ -227,8 +237,14 @@ async function tryEdgeCoordinator(
 
   // Log all response headers for debugging
   const respHeaders: Record<string, string> = {};
-  resp.headers.forEach((v, k) => { respHeaders[k] = v; });
-  logInference(`[edge] ← ${resp.status} ${resp.statusText} headers=${JSON.stringify(respHeaders)}`);
+  resp.headers.forEach((v, k) => {
+    respHeaders[k] = v;
+  });
+  logInference(
+    `[edge] ← ${resp.status} ${resp.statusText} headers=${JSON.stringify(
+      respHeaders
+    )}`
+  );
 
   return resp;
 }
@@ -255,12 +271,17 @@ async function tryCloudRunCoordinator(
   const MAX_BACKOFF_MS = 15_000;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    if (signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+    if (signal?.aborted)
+      throw new DOMException('The operation was aborted.', 'AbortError');
 
     if (attempt === 0) {
-      logInference(`[cloudrun] → ${coordinatorUrl}/v1/chat/completions model=${request.model}`);
+      logInference(
+        `[cloudrun] → ${coordinatorUrl}/v1/chat/completions model=${request.model}`
+      );
     } else {
-      logInference(`[cloudrun] → retry ${attempt}/${MAX_RETRIES} model=${request.model}`);
+      logInference(
+        `[cloudrun] → retry ${attempt}/${MAX_RETRIES} model=${request.model}`
+      );
     }
 
     const resp = await fetch(`${coordinatorUrl}/v1/chat/completions`, {
@@ -271,17 +292,35 @@ async function tryCloudRunCoordinator(
     });
 
     const respHeaders: Record<string, string> = {};
-    resp.headers.forEach((v, k) => { respHeaders[k] = v; });
-    logInference(`[cloudrun] ← ${resp.status} ${resp.statusText} headers=${JSON.stringify(respHeaders)}`);
+    resp.headers.forEach((v, k) => {
+      respHeaders[k] = v;
+    });
+    logInference(
+      `[cloudrun] ← ${resp.status} ${resp.statusText} headers=${JSON.stringify(
+        respHeaders
+      )}`
+    );
 
     // 503 = container cold-starting, retry with backoff
     if (resp.status === 503 && attempt < MAX_RETRIES) {
-      const backoff = Math.min(INITIAL_BACKOFF_MS * Math.pow(1.5, attempt), MAX_BACKOFF_MS);
-      logInference(`[cloudrun] 503 cold-start, retrying in ${Math.round(backoff)}ms`);
+      const backoff = Math.min(
+        INITIAL_BACKOFF_MS * Math.pow(1.5, attempt),
+        MAX_BACKOFF_MS
+      );
+      logInference(
+        `[cloudrun] 503 cold-start, retrying in ${Math.round(backoff)}ms`
+      );
       await new Promise((resolve) => {
         const timer = setTimeout(resolve, backoff);
         // If abort fires during backoff, resolve immediately
-        signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(undefined); }, { once: true });
+        signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer);
+            resolve(undefined);
+          },
+          { once: true }
+        );
       });
       continue;
     }
@@ -294,186 +333,130 @@ async function tryCloudRunCoordinator(
 }
 
 /**
- * Local WASM inference — on-device n-gram language model
+ * Local WASM inference — on-device SmolLM2-360M via transformers.js
  *
- * This is a lightweight local inference engine that generates coherent
- * responses using statistical n-gram patterns. It operates entirely
- * in-process with zero network calls. Not as capable as transformer
- * models but provides a real response when all coordinators are down.
+ * Uses @xenova/transformers with ONNX Runtime to run a real LLM
+ * entirely on-device. The model is downloaded and cached on first use
+ * (~230MB for SmolLM2-360M quantized). Subsequent loads are instant
+ * from the local HuggingFace cache.
  *
- * The engine uses a Markov chain over a vocabulary of common programming
- * and conversational patterns to produce relevant completions.
+ * Model cascade:
+ * 1. onnx-community/SmolLM2-360M-Instruct (360M params, fast)
+ * 2. Xenova/TinyLlama-1.1B-Chat-v1.0 (1.1B params, proven fallback)
  */
+
+// Dynamic import to avoid blocking startup — model loads lazily on first inference
+type TransformersPipeline = (
+  input: unknown,
+  options?: Record<string, unknown>
+) => Promise<unknown>;
+
+const LOCAL_MODEL_CASCADE = [
+  'onnx-community/SmolLM2-360M-Instruct',
+  'Xenova/TinyLlama-1.1B-Chat-v1.0',
+] as const;
+
 class LocalInferenceEngine {
-  private transitions: Map<string, Map<string, number>> = new Map();
-  private initialized = false;
+  private pipe: TransformersPipeline | null = null;
+  private loadingPromise: Promise<boolean> | null = null;
+  private loadedModelId: string | null = null;
+  private loadFailed = false;
 
   /**
-   * Initialize the engine with a seed vocabulary of code/conversation patterns
+   * Lazily load the model pipeline. Returns true if ready.
+   * First call downloads the model (~230MB); subsequent calls use cache.
    */
-  init(): void {
-    if (this.initialized) return;
+  async ensureReady(): Promise<boolean> {
+    if (this.pipe) return true;
+    if (this.loadFailed) return false;
+    if (this.loadingPromise) return this.loadingPromise;
 
-    // Seed transition probabilities for code-related responses
-    const patterns: Array<[string, string, number]> = [
-      // Greeting patterns
-      ['<start>', 'Hello', 10],
-      ['<start>', 'I', 8],
-      ['<start>', 'The', 6],
-      ['<start>', 'Here', 5],
-      ['<start>', 'Let', 4],
-      ['Hello', '!', 8],
-      ['Hello', ',', 5],
-      ['Hello', 'there', 3],
-      ['I', 'can', 6],
-      ['I', 'understand', 4],
-      ['I', "'ll", 3],
-      ['can', 'help', 8],
-      ['can', 'see', 4],
-      ['help', 'you', 7],
-      ['help', 'with', 5],
-      ['you', 'with', 6],
-      ['you', '.', 3],
-      ['with', 'that', 5],
-      ['with', 'this', 4],
-      ['with', 'the', 3],
-      ['that', '.', 6],
-      ['that', ',', 3],
-      ['this', '.', 5],
-      ['this', 'code', 3],
-      // Code patterns
-      ['The', 'function', 5],
-      ['The', 'code', 4],
-      ['The', 'issue', 3],
-      ['The', 'error', 3],
-      ['function', 'takes', 4],
-      ['function', 'returns', 3],
-      ['function', 'should', 3],
-      ['code', 'looks', 4],
-      ['code', 'should', 3],
-      ['code', 'needs', 3],
-      ['looks', 'correct', 4],
-      ['looks', 'like', 3],
-      ['should', 'work', 4],
-      ['should', 'be', 3],
-      ['needs', 'to', 5],
-      ['needs', 'a', 3],
-      ['to', 'be', 4],
-      ['to', 'handle', 3],
-      ['to', 'the', 3],
-      ['be', 'updated', 3],
-      ['be', 'fixed', 3],
-      ['be', 'more', 2],
-      ['Here', 'is', 6],
-      ['Here', "'s", 4],
-      ['is', 'a', 5],
-      ['is', 'the', 4],
-      ['is', 'an', 3],
-      ["'s", 'a', 4],
-      ["'s", 'what', 3],
-      ['a', 'suggestion', 3],
-      ['a', 'way', 3],
-      ['a', 'possible', 2],
-      ['Let', 'me', 6],
-      ['me', 'help', 4],
-      ['me', 'explain', 3],
-      ['me', 'look', 3],
-      ['explain', 'that', 4],
-      ['explain', '.', 3],
-      ['look', 'at', 5],
-      ['at', 'the', 5],
-      ['at', 'this', 3],
-      ['the', 'code', 4],
-      ['the', 'issue', 3],
-      ['the', 'error', 3],
-      ['the', 'function', 2],
-      ['error', 'is', 4],
-      ['error', 'occurs', 3],
-      ['issue', 'is', 4],
-      ['issue', 'might', 3],
-      ['might', 'be', 5],
-      ['correct', '.', 5],
-      ['work', '.', 5],
-      ['work', 'correctly', 3],
-      ['correctly', '.', 5],
-      ['updated', '.', 4],
-      ['fixed', '.', 4],
-      ['suggestion', '.', 3],
-      ['suggestion', ':', 3],
-      ['.', '<end>', 10],
-      ['!', '<end>', 5],
-      ['!', 'I', 3],
-      [',', 'I', 3],
-      [',', 'and', 3],
-      [',', 'but', 2],
-      ['and', 'I', 3],
-      ['and', 'the', 3],
-      ['but', 'I', 3],
-      ['but', 'the', 2],
-    ];
+    this.loadingPromise = this.loadModel();
+    return this.loadingPromise;
+  }
 
-    for (const [from, to, weight] of patterns) {
-      if (!this.transitions.has(from)) {
-        this.transitions.set(from, new Map());
+  private async loadModel(): Promise<boolean> {
+    try {
+      // Dynamic import so the module isn't loaded until needed
+      const { pipeline, env } = await import('@xenova/transformers');
+
+      // Configure for Node/Bun environment
+      env.allowLocalModels = false;
+      env.allowRemoteModels = true;
+      if (env.backends?.onnx?.wasm) {
+        env.backends.onnx.wasm.numThreads = 1;
       }
-      this.transitions.get(from)!.set(to, weight);
-    }
 
-    this.initialized = true;
+      // Try each model in cascade
+      for (const modelId of LOCAL_MODEL_CASCADE) {
+        try {
+          logInference(`[wasm] Loading ${modelId}...`);
+          const t0 = Date.now();
+          this.pipe = (await pipeline('text-generation', modelId, {
+            quantized: true,
+          })) as unknown as TransformersPipeline;
+          this.loadedModelId = modelId;
+          logInference(
+            `[wasm] ${modelId} ready (${Date.now() - t0}ms)`
+          );
+          return true;
+        } catch (err) {
+          logInference(
+            `[wasm] ${modelId} failed: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+      }
+
+      logInference('[wasm] All model candidates failed');
+      this.loadFailed = true;
+      return false;
+    } catch (err) {
+      logInference(
+        `[wasm] transformers.js import failed: ${err instanceof Error ? err.message : String(err)}`
+      );
+      this.loadFailed = true;
+      return false;
+    }
   }
 
   /**
-   * Generate a response using the Markov chain
+   * Generate a response using the loaded transformer model.
+   * Formats messages in ChatML format and runs real inference.
    */
-  generate(maxTokens: number, temperature: number): string {
-    this.init();
+  async generate(
+    messages: ChatMessage[],
+    maxTokens: number,
+    temperature: number
+  ): Promise<string> {
+    if (!this.pipe) throw new Error('Model not loaded');
 
-    const tokens: string[] = [];
-    let current = '<start>';
-    const maxLen = Math.min(maxTokens, 100);
+    // ChatML format (works with SmolLM2 and TinyLlama)
+    const prompt =
+      messages
+        .map((m) => `<|im_start|>${m.role}\n${m.content}<|im_end|>`)
+        .join('\n') + '\n<|im_start|>assistant\n';
 
-    for (let i = 0; i < maxLen; i++) {
-      const next = this.nextToken(current, temperature);
-      if (next === '<end>' || !next) break;
-      tokens.push(next);
-      current = next;
-    }
+    const result = await this.pipe(prompt, {
+      max_new_tokens: Math.min(maxTokens, 512),
+      temperature: Math.max(0.1, temperature),
+      do_sample: true,
+      return_full_text: false,
+    });
 
-    return tokens
-      .join(' ')
-      .replace(/ \./g, '.')
-      .replace(/ ,/g, ',')
-      .replace(/ !/g, '!')
-      .replace(/ :/g, ':')
-      .replace(/ '/g, "'");
+    const generated = Array.isArray(result)
+      ? ((result as Array<{ generated_text?: string }>)[0]?.generated_text ??
+        '')
+      : String(result);
+
+    // Strip any trailing ChatML tokens from the output
+    return generated
+      .replace(/<\|im_end\|>.*/s, '')
+      .replace(/<\|im_start\|>.*/s, '')
+      .trim();
   }
 
-  private nextToken(current: string, temperature: number): string | null {
-    const candidates = this.transitions.get(current);
-    if (!candidates || candidates.size === 0) {
-      // Try falling back to common transitions
-      const fallback = this.transitions.get('the');
-      if (!fallback) return null;
-      return this.sample(fallback, temperature);
-    }
-    return this.sample(candidates, temperature);
-  }
-
-  private sample(candidates: Map<string, number>, temperature: number): string {
-    const entries = Array.from(candidates.entries());
-
-    // Apply temperature: higher = more random, lower = more deterministic
-    const weights = entries.map(([, w]) =>
-      Math.pow(w, 1 / Math.max(0.1, temperature))
-    );
-    const totalWeight = weights.reduce((a, b) => a + b, 0);
-
-    let rand = Math.random() * totalWeight;
-    for (let i = 0; i < entries.length; i++) {
-      rand -= weights[i];
-      if (rand <= 0) return entries[i][0];
-    }
-    return entries[entries.length - 1][0];
+  get modelId(): string {
+    return this.loadedModelId ?? 'wasm-local';
   }
 }
 
@@ -506,7 +489,7 @@ async function raceForFirst<T>(
 }
 
 /**
- * Local WASM inference — generates a real response using on-device model
+ * Local WASM inference — generates a real response using on-device SmolLM2-360M
  */
 async function tryWasmFallback(
   request: ChatCompletionRequest
@@ -514,7 +497,19 @@ async function tryWasmFallback(
   const temperature = request.temperature ?? 0.7;
   const maxTokens = request.max_tokens ?? 128;
 
-  const content = localEngine.generate(maxTokens, temperature);
+  // Ensure model is loaded (lazy — first call downloads weights)
+  const ready = await localEngine.ensureReady();
+  if (!ready) {
+    throw new Error('Local model failed to load');
+  }
+
+  const t0 = Date.now();
+  const content = await localEngine.generate(
+    request.messages,
+    maxTokens,
+    temperature
+  );
+  const inferenceMs = Date.now() - t0;
 
   const promptTokens = request.messages.reduce(
     (acc, m) => acc + Math.ceil(m.content.length / 4),
@@ -522,11 +517,15 @@ async function tryWasmFallback(
   );
   const completionTokens = Math.ceil(content.length / 4);
 
+  logInference(
+    `[wasm] generated ${completionTokens} tokens in ${inferenceMs}ms (${localEngine.modelId})`
+  );
+
   const response: ChatCompletionResponse = {
     id: `chatcmpl-wasm-${Date.now()}`,
     object: 'chat.completion',
     created: Math.floor(Date.now() / 1000),
-    model: 'wasm-local',
+    model: localEngine.modelId,
     choices: [
       {
         index: 0,
@@ -599,7 +598,12 @@ export function createSSEProxyStream(
   // Debug info goes in HTTP response headers instead (X-Zedge-Tier, etc.).
   if (attempts?.length) {
     const chainStr = attempts
-      .map((a) => `${a.tier}:${a.status}(${a.ms}ms)${a.detail ? '[' + a.detail.slice(0, 40) + ']' : ''}`)
+      .map(
+        (a) =>
+          `${a.tier}:${a.status}(${a.ms}ms)${
+            a.detail ? '[' + a.detail.slice(0, 40) + ']' : ''
+          }`
+      )
       .join(' → ');
     logInference(`[sse-proxy] tier=${tier} chain: ${chainStr}`);
   }
@@ -646,7 +650,10 @@ export function createSSEProxyStream(
       // (cold starts, prefill, weight loading). Zed's parser ignores
       // non-`data:` lines but the bytes prevent idle connection timeouts.
       const heartbeat = setInterval(() => {
-        if (closed) { clearInterval(heartbeat); return; }
+        if (closed) {
+          clearInterval(heartbeat);
+          return;
+        }
         enqueue(encoder.encode(': heartbeat\n\n'));
       }, 5_000);
 
@@ -666,7 +673,7 @@ export function createSSEProxyStream(
       let prefillStartMs = 0;
       let lastPrefillMs = 0;
       let lastPrefillPos = 0;
-      const prefillTokSec: number[] = [];  // tok/s at each checkpoint for sparkline
+      const prefillTokSec: number[] = []; // tok/s at each checkpoint for sparkline
       const progressId = `chatcmpl-progress-${Date.now()}`;
       const progressCreated = Math.floor(Date.now() / 1000);
 
@@ -694,10 +701,17 @@ export function createSSEProxyStream(
                 sawDone = true;
               } else if (!firstDataLogged) {
                 firstDataLogged = true;
-                logInference(`[sse-proxy] tier=${tier} first-data: ${payload.slice(0, 200)}`);
+                logInference(
+                  `[sse-proxy] tier=${tier} first-data: ${payload.slice(
+                    0,
+                    200
+                  )}`
+                );
                 // Emit chain debug info before first real token
                 const chainInfo = attempts?.length
-                  ? attempts.map((a) => `${a.tier}:${a.status}(${a.ms}ms)`).join(' > ')
+                  ? attempts
+                      .map((a) => `${a.tier}:${a.status}(${a.ms}ms)`)
+                      .join(' > ')
                   : tier;
                 if (useReasoning) {
                   // reasoning_content goes into Zed's thinking UI (when supported)
@@ -706,19 +720,24 @@ export function createSSEProxyStream(
                     object: 'chat.completion.chunk',
                     created: progressCreated,
                     model: modelName ?? tier,
-                    choices: [{
-                      index: 0,
-                      delta: { reasoning_content: `[${chainInfo}]\n` },
-                      finish_reason: null,
-                    }],
+                    choices: [
+                      {
+                        index: 0,
+                        delta: { reasoning_content: `[${chainInfo}]\n` },
+                        finish_reason: null,
+                      },
+                    ],
                   };
-                  enqueue(encoder.encode(`data: ${JSON.stringify(debugChunk)}\n\n`));
+                  enqueue(
+                    encoder.encode(`data: ${JSON.stringify(debugChunk)}\n\n`)
+                  );
                 } else if (emittedProgress) {
                   // Close the sparkline with stats and italic marker
                   const prefillMs = Date.now() - prefillStartMs;
-                  const avgTokSec = prefillMs > 0 && lastPrefillPos > 0
-                    ? Math.round((lastPrefillPos / prefillMs) * 1000)
-                    : 0;
+                  const avgTokSec =
+                    prefillMs > 0 && lastPrefillPos > 0
+                      ? Math.round((lastPrefillPos / prefillMs) * 1000)
+                      : 0;
                   const closingText = ` ${avgTokSec}t/s | ${chainInfo}*\n\n`;
                   if (useReasoning) {
                     const sep = {
@@ -726,11 +745,13 @@ export function createSSEProxyStream(
                       object: 'chat.completion.chunk',
                       created: progressCreated,
                       model: modelName ?? tier,
-                      choices: [{
-                        index: 0,
-                        delta: { reasoning_content: closingText },
-                        finish_reason: null,
-                      }],
+                      choices: [
+                        {
+                          index: 0,
+                          delta: { reasoning_content: closingText },
+                          finish_reason: null,
+                        },
+                      ],
                     };
                     enqueue(encoder.encode(`data: ${JSON.stringify(sep)}\n\n`));
                   } else {
@@ -739,11 +760,13 @@ export function createSSEProxyStream(
                       object: 'chat.completion.chunk',
                       created: progressCreated,
                       model: modelName ?? tier,
-                      choices: [{
-                        index: 0,
-                        delta: { content: closingText },
-                        finish_reason: null,
-                      }],
+                      choices: [
+                        {
+                          index: 0,
+                          delta: { content: closingText },
+                          finish_reason: null,
+                        },
+                      ],
                     };
                     enqueue(encoder.encode(`data: ${JSON.stringify(sep)}\n\n`));
                   }
@@ -754,7 +777,9 @@ export function createSSEProxyStream(
               enqueue(encoder.encode('\n'));
             } else if (line.startsWith(':')) {
               // Log upstream comments (heartbeat, prefill) but don't forward raw
-              logInference(`[sse-proxy] tier=${tier} upstream: ${line.slice(0, 100)}`);
+              logInference(
+                `[sse-proxy] tier=${tier} upstream: ${line.slice(0, 100)}`
+              );
 
               // Convert prefill progress into an append-friendly sparkline.
               // Each tick emits ONE character — the sparkline grows naturally
@@ -762,7 +787,8 @@ export function createSSEProxyStream(
               // Result: `*⠿ ▁▃▅▇████▇▅ 450t/s*`
               const prefillMatch = line.match(/^: prefill (\d+)\/(\d+)/);
               if (prefillMatch && !firstDataLogged) {
-                const sparks = '\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588';
+                const sparks =
+                  '\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588';
                 const pos = parseInt(prefillMatch[1], 10);
                 const total = parseInt(prefillMatch[2], 10);
                 const isStart = !emittedProgress;
@@ -780,7 +806,10 @@ export function createSSEProxyStream(
                   const tokSec = Math.round((segmentToks / segmentMs) * 1000);
                   prefillTokSec.push(tokSec);
                   // Scale spark: 0-500 t/s range mapped to spark index
-                  const idx = Math.min(sparks.length - 1, Math.round((tokSec / 500) * (sparks.length - 1)));
+                  const idx = Math.min(
+                    sparks.length - 1,
+                    Math.round((tokSec / 500) * (sparks.length - 1))
+                  );
                   sparkChar = sparks[idx];
                 }
                 lastPrefillMs = now;
@@ -808,26 +837,34 @@ export function createSSEProxyStream(
                     object: 'chat.completion.chunk',
                     created: progressCreated,
                     model: modelName ?? tier,
-                    choices: [{
-                      index: 0,
-                      delta: { reasoning_content: tickContent },
-                      finish_reason: null,
-                    }],
+                    choices: [
+                      {
+                        index: 0,
+                        delta: { reasoning_content: tickContent },
+                        finish_reason: null,
+                      },
+                    ],
                   };
-                  enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
+                  enqueue(
+                    encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`)
+                  );
                 } else {
                   const progressChunk = {
                     id: progressId,
                     object: 'chat.completion.chunk',
                     created: progressCreated,
                     model: modelName ?? tier,
-                    choices: [{
-                      index: 0,
-                      delta: tickDelta,
-                      finish_reason: null,
-                    }],
+                    choices: [
+                      {
+                        index: 0,
+                        delta: tickDelta,
+                        finish_reason: null,
+                      },
+                    ],
                   };
-                  enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
+                  enqueue(
+                    encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`)
+                  );
                 }
               }
             }
@@ -857,11 +894,15 @@ export function createSSEProxyStream(
             object: 'chat.completion.chunk',
             created: progressCreated,
             model: modelName ?? tier,
-            choices: [{
-              index: 0,
-              delta: { reasoning_content: `\n---\ntier: ${tier} | ${dataEventCount} tokens | ${elapsed}ms | ${totalBytes}B\n` },
-              finish_reason: null,
-            }],
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  reasoning_content: `\n---\ntier: ${tier} | ${dataEventCount} tokens | ${elapsed}ms | ${totalBytes}B\n`,
+                },
+                finish_reason: null,
+              },
+            ],
             usage: {
               prompt_tokens: 0,
               completion_tokens: dataEventCount,
@@ -873,7 +914,9 @@ export function createSSEProxyStream(
         if (!sawDone) {
           enqueue(encoder.encode('data: [DONE]\n\n'));
         }
-        logInference(`[sse-proxy] tier=${tier} stream-end: ${totalBytes}B ${dataEventCount} data-events sawDone=${sawDone} ${elapsed}ms`);
+        logInference(
+          `[sse-proxy] tier=${tier} stream-end: ${totalBytes}B ${dataEventCount} data-events sawDone=${sawDone} ${elapsed}ms`
+        );
         closeController();
       }
     },
@@ -895,8 +938,15 @@ export async function infer(
   const config = getZedgeConfig();
   const attempts: TierAttempt[] = [];
   const lastMsg = request.messages[request.messages.length - 1];
-  const msgPreview = typeof lastMsg?.content === 'string' ? lastMsg.content.slice(0, 80) : JSON.stringify(lastMsg?.content)?.slice(0, 80) ?? '';
-  logInference(`--- REQUEST model=${request.model} stream=${request.stream ?? false} msgs=${request.messages.length} last="${msgPreview}"`);
+  const msgPreview =
+    typeof lastMsg?.content === 'string'
+      ? lastMsg.content.slice(0, 80)
+      : JSON.stringify(lastMsg?.content)?.slice(0, 80) ?? '';
+  logInference(
+    `--- REQUEST model=${request.model} stream=${
+      request.stream ?? false
+    } msgs=${request.messages.length} last="${msgPreview}"`
+  );
 
   // Speculatively warm all other coordinators while this request is in flight
   speculativeWarmup(request.model);
@@ -917,7 +967,9 @@ export async function infer(
       const meshResponse = await tryMeshInference(request);
       if (meshResponse && meshResponse.ok) {
         attempt('mesh', t0, 'ok');
-        logInference(`model=${request.model} tier=mesh status=ok ms=${Date.now() - t0}`);
+        logInference(
+          `model=${request.model} tier=mesh status=ok ms=${Date.now() - t0}`
+        );
         return {
           tier: 'mesh',
           response: meshResponse,
@@ -944,7 +996,8 @@ export async function infer(
   // The race between edge + cloudrun means whichever responds first wins —
   // the deadline is just a safety net before falling to WASM.
   const RACE_DEADLINE_MS = 900_000; // 15 minutes
-  const canCloudRun = config.cloudRunDirect && !!CLOUD_RUN_COORDINATORS[request.model];
+  const canCloudRun =
+    config.cloudRunDirect && !!CLOUD_RUN_COORDINATORS[request.model];
   const preferCloudRunForStreaming = request.stream && canCloudRun;
   {
     const t0 = Date.now();
@@ -952,7 +1005,10 @@ export async function infer(
     const cloudRunAbort = new AbortController();
 
     // Edge attempt: skip when streaming + Cloud Run available (edge doesn't stream tokens)
-    let edgePromise: Promise<{ tier: InferenceTier; response: Response } | null>;
+    let edgePromise: Promise<{
+      tier: InferenceTier;
+      response: Response;
+    } | null>;
     let edgeTimeout: ReturnType<typeof setTimeout> | undefined;
     if (preferCloudRunForStreaming) {
       attempt('edge', t0, 'skipped', 'streaming prefers cloudrun direct');
@@ -960,30 +1016,49 @@ export async function infer(
     } else {
       edgeTimeout = setTimeout(() => edgeAbort.abort(), 150_000);
       edgePromise = tryEdgeCoordinator(request, edgeAbort.signal)
-        .then((response): { tier: InferenceTier; response: Response } | null => {
-          if (response.ok) return { tier: 'edge', response };
-          attempt('edge', t0, 'http_error', `${response.status} ${response.statusText}`);
-          return null;
-        })
+        .then(
+          (response): { tier: InferenceTier; response: Response } | null => {
+            if (response.ok) return { tier: 'edge', response };
+            attempt(
+              'edge',
+              t0,
+              'http_error',
+              `${response.status} ${response.statusText}`
+            );
+            return null;
+          }
+        )
         .catch((err): null => {
-          const isTimeout = err instanceof DOMException && err.name === 'AbortError';
+          const isTimeout =
+            err instanceof DOMException && err.name === 'AbortError';
           attempt('edge', t0, isTimeout ? 'timeout' : 'error', String(err));
           return null;
         });
     }
 
     // Cloud Run attempt (only if available): 15 min timeout for cold starts
-    let cloudRunPromise: Promise<{ tier: InferenceTier; response: Response } | null>;
+    let cloudRunPromise: Promise<{
+      tier: InferenceTier;
+      response: Response;
+    } | null>;
     if (canCloudRun) {
       const cloudRunTimeout = setTimeout(() => cloudRunAbort.abort(), 900_000);
       cloudRunPromise = tryCloudRunCoordinator(request, cloudRunAbort.signal)
-        .then((response): { tier: InferenceTier; response: Response } | null => {
-          if (response.ok) return { tier: 'cloudrun', response };
-          attempt('cloudrun', t0, 'http_error', `${response.status} ${response.statusText}`);
-          return null;
-        })
+        .then(
+          (response): { tier: InferenceTier; response: Response } | null => {
+            if (response.ok) return { tier: 'cloudrun', response };
+            attempt(
+              'cloudrun',
+              t0,
+              'http_error',
+              `${response.status} ${response.statusText}`
+            );
+            return null;
+          }
+        )
         .catch((err): null => {
-          const isTimeout = err instanceof DOMException && err.name === 'AbortError';
+          const isTimeout =
+            err instanceof DOMException && err.name === 'AbortError';
           attempt('cloudrun', t0, isTimeout ? 'timeout' : 'error', String(err));
           return null;
         })
@@ -1008,7 +1083,12 @@ export async function infer(
       setTimeout(() => {
         attempt('edge', t0, 'timeout', `race deadline ${RACE_DEADLINE_MS}ms`);
         if (canCloudRun) {
-          attempt('cloudrun', t0, 'timeout', `race deadline ${RACE_DEADLINE_MS}ms`);
+          attempt(
+            'cloudrun',
+            t0,
+            'timeout',
+            `race deadline ${RACE_DEADLINE_MS}ms`
+          );
         }
         resolve(null);
       }, RACE_DEADLINE_MS)
@@ -1016,7 +1096,9 @@ export async function infer(
 
     const winner = await Promise.race([
       raceForFirst([edgePromise, cloudRunPromise]),
-      deadlinePromise.then(() => null as { tier: InferenceTier; response: Response } | null),
+      deadlinePromise.then(
+        () => null as { tier: InferenceTier; response: Response } | null
+      ),
     ]);
     if (edgeTimeout) clearTimeout(edgeTimeout);
 
@@ -1026,18 +1108,31 @@ export async function infer(
       // This is especially important for large models where cold start +
       // weight loading can take minutes.
       const loserTier = winner.tier === 'edge' ? 'cloudrun' : 'edge';
-      const loserPromise = winner.tier === 'edge' ? cloudRunPromise : edgePromise;
-      loserPromise.then((result) => {
-        if (result) {
-          logInference(`model=${request.model} [background-warm] ${loserTier} completed after ${Date.now() - t0}ms (winner was ${winner.tier})`);
-          // Consume body to avoid leak, but let the request complete on the server
-          result.response.body?.cancel().catch(() => {});
-        }
-      }).catch(() => {});
+      const loserPromise =
+        winner.tier === 'edge' ? cloudRunPromise : edgePromise;
+      loserPromise
+        .then((result) => {
+          if (result) {
+            logInference(
+              `model=${
+                request.model
+              } [background-warm] ${loserTier} completed after ${
+                Date.now() - t0
+              }ms (winner was ${winner.tier})`
+            );
+            // Consume body to avoid leak, but let the request complete on the server
+            result.response.body?.cancel().catch(() => {});
+          }
+        })
+        .catch(() => {});
 
       attempt(winner.tier, t0, 'ok');
       const xHeaders = extractUpstreamDebugHeaders(winner.response);
-      logInference(`model=${request.model} tier=${winner.tier} status=ok ms=${Date.now() - t0} x-headers=${JSON.stringify(xHeaders)}`);
+      logInference(
+        `model=${request.model} tier=${winner.tier} status=ok ms=${
+          Date.now() - t0
+        } x-headers=${JSON.stringify(xHeaders)}`
+      );
       return {
         tier: winner.tier,
         response: winner.response,
@@ -1048,19 +1143,27 @@ export async function infer(
 
     // Deadline hit — fall to WASM immediately but DO NOT abort coordinators.
     // Let edge/cloudrun continue warming up in the background. Log when they finish.
-    logInference(`model=${request.model} edge+cloudrun race: no winner within ${RACE_DEADLINE_MS}ms, falling to WASM (coordinators still warming)`);
+    logInference(
+      `model=${request.model} edge+cloudrun race: no winner within ${RACE_DEADLINE_MS}ms, falling to WASM (coordinators still warming)`
+    );
 
     // Fire-and-forget: track when coordinators eventually respond (for diagnostics)
-    raceForFirst([edgePromise, cloudRunPromise]).then((lateWinner) => {
-      if (lateWinner) {
-        const warmMs = Date.now() - t0;
-        logInference(`model=${request.model} [background-warm] ${lateWinner.tier} responded after ${warmMs}ms (was past ${RACE_DEADLINE_MS}ms deadline)`);
-        // Consume the response body to avoid memory leaks
-        lateWinner.response.body?.cancel().catch(() => {});
-      } else {
-        logInference(`model=${request.model} [background-warm] both tiers failed even after waiting`);
-      }
-    }).catch(() => {});
+    raceForFirst([edgePromise, cloudRunPromise])
+      .then((lateWinner) => {
+        if (lateWinner) {
+          const warmMs = Date.now() - t0;
+          logInference(
+            `model=${request.model} [background-warm] ${lateWinner.tier} responded after ${warmMs}ms (was past ${RACE_DEADLINE_MS}ms deadline)`
+          );
+          // Consume the response body to avoid memory leaks
+          lateWinner.response.body?.cancel().catch(() => {});
+        } else {
+          logInference(
+            `model=${request.model} [background-warm] both tiers failed even after waiting`
+          );
+        }
+      })
+      .catch(() => {});
   }
 
   // Tier 4: Local WASM inference (real on-device generation)
@@ -1071,9 +1174,20 @@ export async function infer(
       attempt('wasm', t0, 'ok');
 
       // Log full chain when falling to WASM — this is always interesting
-      const chainStr = attempts.map((a) => `${a.tier}:${a.status}(${a.ms}ms)${a.detail ? '[' + a.detail.slice(0, 40) + ']' : ''}`).join(' → ');
-      console.warn(`[zedge] fell to WASM for model=${request.model} | chain: ${chainStr}`);
-      logInference(`model=${request.model} tier=wasm FALLBACK chain: ${chainStr}`);
+      const chainStr = attempts
+        .map(
+          (a) =>
+            `${a.tier}:${a.status}(${a.ms}ms)${
+              a.detail ? '[' + a.detail.slice(0, 40) + ']' : ''
+            }`
+        )
+        .join(' → ');
+      console.warn(
+        `[zedge] fell to WASM for model=${request.model} | chain: ${chainStr}`
+      );
+      logInference(
+        `model=${request.model} tier=wasm FALLBACK chain: ${chainStr}`
+      );
 
       return {
         tier: 'wasm',
@@ -1088,8 +1202,12 @@ export async function infer(
 
   // Tier 5: Echo fallback (guaranteed response)
   attempts.push({ tier: 'echo', status: 'ok', ms: 0 });
-  const echoChain = attempts.map((a) => `${a.tier}:${a.status}(${a.ms}ms)`).join(' → ');
-  console.error(`[zedge] fell to ECHO for model=${request.model} | chain: ${echoChain}`);
+  const echoChain = attempts
+    .map((a) => `${a.tier}:${a.status}(${a.ms}ms)`)
+    .join(' → ');
+  console.error(
+    `[zedge] fell to ECHO for model=${request.model} | chain: ${echoChain}`
+  );
   logInference(`model=${request.model} tier=echo FALLBACK chain: ${echoChain}`);
   return {
     tier: 'echo',
