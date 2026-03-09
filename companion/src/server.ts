@@ -10,6 +10,7 @@ import {
   embed,
   createSSEProxyStream,
   getRecentLogs,
+  clearLogs,
 } from './inference-bridge';
 import type { TierAttempt } from './inference-bridge';
 import { joinPool, leavePool, getPoolStatus } from './compute-node';
@@ -313,13 +314,24 @@ async function handleRequest(req: Request): Promise<Response> {
     });
   }
 
-  // ==================== Logs ====================
+  // ==================== Logs & Lifecycle ====================
 
   if (path === '/logs' && req.method === 'GET') {
     const url = new URL(req.url);
     const count = parseInt(url.searchParams.get('n') ?? '100', 10);
     const lines = getRecentLogs(count);
     return jsonResponse({ lines, count: lines.length });
+  }
+
+  if (path === '/logs' && req.method === 'DELETE') {
+    clearLogs();
+    return jsonResponse({ status: 'cleared' });
+  }
+
+  if (path === '/restart' && req.method === 'POST') {
+    // Respond first, then exit — the context server runner will restart us
+    setTimeout(() => process.exit(0), 100);
+    return jsonResponse({ status: 'restarting' });
   }
 
   // ==================== OpenAI-Compatible API ====================

@@ -20,6 +20,32 @@ fn companion_get(path: &str) -> Result<String, String> {
     String::from_utf8(response.body).map_err(|e| format!("Invalid UTF-8: {e}"))
 }
 
+/// Helper: POST to companion and return body as string
+fn companion_post(path: &str) -> Result<String, String> {
+    let url = format!("{}{}", provider::COMPANION_URL, path);
+    let response = HttpRequest::builder()
+        .method(HttpMethod::Post)
+        .url(&url)
+        .redirect_policy(RedirectPolicy::FollowAll)
+        .build()?
+        .fetch()
+        .map_err(|e| format!("Companion unavailable: {e}"))?;
+    String::from_utf8(response.body).map_err(|e| format!("Invalid UTF-8: {e}"))
+}
+
+/// Helper: DELETE to companion and return body as string
+fn companion_delete(path: &str) -> Result<String, String> {
+    let url = format!("{}{}", provider::COMPANION_URL, path);
+    let response = HttpRequest::builder()
+        .method(HttpMethod::Delete)
+        .url(&url)
+        .redirect_policy(RedirectPolicy::FollowAll)
+        .build()?
+        .fetch()
+        .map_err(|e| format!("Companion unavailable: {e}"))?;
+    String::from_utf8(response.body).map_err(|e| format!("Invalid UTF-8: {e}"))
+}
+
 /// Build a SlashCommandOutput with a single labeled section spanning the full text
 fn output_with_section(text: String, label: &str) -> SlashCommandOutput {
     let len = text.len() as u32;
@@ -201,6 +227,25 @@ pub fn run_logs() -> Result<SlashCommandOutput, String> {
                 "Inference Logs",
             ))
         }
+    }
+}
+
+/// /zedge-clear — clear inference logs
+pub fn run_clear() -> Result<SlashCommandOutput, String> {
+    match companion_delete("/logs") {
+        Ok(_) => Ok(output_with_section("Inference logs cleared.".to_string(), "Logs Cleared")),
+        Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Logs Cleared")),
+    }
+}
+
+/// /zedge-restart — restart companion sidecar
+pub fn run_restart() -> Result<SlashCommandOutput, String> {
+    match companion_post("/restart") {
+        Ok(_) => Ok(output_with_section(
+            "Companion is restarting. It will be back in a few seconds.".to_string(),
+            "Companion Restart",
+        )),
+        Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Companion Restart")),
     }
 }
 

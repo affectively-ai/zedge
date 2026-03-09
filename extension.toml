@@ -22,6 +22,14 @@ requires_argument = false
 description = "Show recent inference logs from the companion"
 requires_argument = false
 
+[slash_commands.zedge-clear]
+description = "Clear inference logs"
+requires_argument = false
+
+[slash_commands.zedge-restart]
+description = "Restart the companion sidecar"
+requires_argument = false
+
 [slash_commands.zedge-feedback]
 description = "Submit RLHF feedback on response quality"
 requires_argument = false

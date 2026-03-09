@@ -42,6 +42,11 @@ export function getRecentLogs(count?: number): string[] {
   return logRing.slice(-n);
 }
 
+/** Clear the in-memory log ring */
+export function clearLogs(): void {
+  logRing.length = 0;
+}
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
