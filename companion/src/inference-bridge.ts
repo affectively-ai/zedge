@@ -935,34 +935,42 @@ export async function infer(
   // Edge consistently takes 30s to timeout — racing both eliminates the waste.
   // First successful (200 OK) response wins; loser is aborted.
   //
-  // IMPORTANT: Overall race deadline of 15s. If neither tier responds with
-  // a 200 OK within the deadline, fall immediately to WASM so the client
-  // (Zed) doesn't time out waiting. Cold starts can take 60s+ but Zed's
-  // built-in client timeout is much shorter. The race continues in the
-  // background to warm up the coordinator for subsequent requests.
+  // STREAMING EXCEPTION: When stream=true and Cloud Run is available, prefer
+  // Cloud Run directly. The edge CF Worker doesn't forward per-token SSE —
+  // it buffers the entire response and sends only the stop event. Cloud Run
+  // coordinators stream real per-token deltas via TransformStream.
+  //
   // Large models can take minutes to cold-start and load weights from GCS FUSE.
   // The race between edge + cloudrun means whichever responds first wins —
   // the deadline is just a safety net before falling to WASM.
   const RACE_DEADLINE_MS = 900_000; // 15 minutes
   const canCloudRun = config.cloudRunDirect && !!CLOUD_RUN_COORDINATORS[request.model];
+  const preferCloudRunForStreaming = request.stream && canCloudRun;
   {
     const t0 = Date.now();
     const edgeAbort = new AbortController();
     const cloudRunAbort = new AbortController();
 
-    // Edge attempt: 150s timeout (paid CF plan, no wall-clock limit)
-    const edgeTimeout = setTimeout(() => edgeAbort.abort(), 150_000);
-    const edgePromise = tryEdgeCoordinator(request, edgeAbort.signal)
-      .then((response): { tier: InferenceTier; response: Response } | null => {
-        if (response.ok) return { tier: 'edge', response };
-        attempt('edge', t0, 'http_error', `${response.status} ${response.statusText}`);
-        return null;
-      })
-      .catch((err): null => {
-        const isTimeout = err instanceof DOMException && err.name === 'AbortError';
-        attempt('edge', t0, isTimeout ? 'timeout' : 'error', String(err));
-        return null;
-      });
+    // Edge attempt: skip when streaming + Cloud Run available (edge doesn't stream tokens)
+    let edgePromise: Promise<{ tier: InferenceTier; response: Response } | null>;
+    let edgeTimeout: ReturnType<typeof setTimeout> | undefined;
+    if (preferCloudRunForStreaming) {
+      attempt('edge', t0, 'skipped', 'streaming prefers cloudrun direct');
+      edgePromise = Promise.resolve(null);
+    } else {
+      edgeTimeout = setTimeout(() => edgeAbort.abort(), 150_000);
+      edgePromise = tryEdgeCoordinator(request, edgeAbort.signal)
+        .then((response): { tier: InferenceTier; response: Response } | null => {
+          if (response.ok) return { tier: 'edge', response };
+          attempt('edge', t0, 'http_error', `${response.status} ${response.statusText}`);
+          return null;
+        })
+        .catch((err): null => {
+          const isTimeout = err instanceof DOMException && err.name === 'AbortError';
+          attempt('edge', t0, isTimeout ? 'timeout' : 'error', String(err));
+          return null;
+        });
+    }
 
     // Cloud Run attempt (only if available): 15 min timeout for cold starts
     let cloudRunPromise: Promise<{ tier: InferenceTier; response: Response } | null>;
@@ -1010,7 +1018,7 @@ export async function infer(
       raceForFirst([edgePromise, cloudRunPromise]),
       deadlinePromise.then(() => null as { tier: InferenceTier; response: Response } | null),
     ]);
-    clearTimeout(edgeTimeout);
+    if (edgeTimeout) clearTimeout(edgeTimeout);
 
     if (winner) {
       // Don't abort the loser — let it complete in the background so it
