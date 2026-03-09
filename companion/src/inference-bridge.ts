@@ -571,7 +571,8 @@ export function createSSEProxyStream(
   upstreamBody: ReadableStream<Uint8Array> | null,
   tier: InferenceTier,
   upstreamHeaders: Record<string, string> = {},
-  attempts?: TierAttempt[]
+  attempts?: TierAttempt[],
+  modelName?: string
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -687,7 +688,7 @@ export function createSSEProxyStream(
                     id: progressId,
                     object: 'chat.completion.chunk',
                     created: progressCreated,
-                    model: tier,
+                    model: modelName ?? tier,
                     choices: [{
                       index: 0,
                       delta: { reasoning_content: `[${chainInfo}]\n` },
@@ -696,31 +697,39 @@ export function createSSEProxyStream(
                   };
                   enqueue(encoder.encode(`data: ${JSON.stringify(debugChunk)}\n\n`));
                 } else if (emittedProgress) {
-                  // Sparkline from per-segment tok/s measurements
-                  const sparks = '\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588';
-                  let sparkline = '';
-                  if (prefillTokSec.length > 0) {
-                    const max = Math.max(...prefillTokSec);
-                    const min = Math.min(...prefillTokSec);
-                    const range = max - min || 1;
-                    sparkline = ' ' + prefillTokSec.map(v =>
-                      sparks[Math.round(((v - min) / range) * (sparks.length - 1))]
-                    ).join('');
-                  }
+                  // Close the sparkline with stats and italic marker
                   const prefillMs = Date.now() - prefillStartMs;
-                  // Close the italic prefill line with chain info + sparkline
-                  const sep = {
-                    id: progressId,
-                    object: 'chat.completion.chunk',
-                    created: progressCreated,
-                    model: tier,
-                    choices: [{
-                      index: 0,
-                      delta: { content: `${sparkline} | ${chainInfo} ${prefillMs}ms*\n\n` },
-                      finish_reason: null,
-                    }],
-                  };
-                  enqueue(encoder.encode(`data: ${JSON.stringify(sep)}\n\n`));
+                  const avgTokSec = prefillMs > 0 && lastPrefillPos > 0
+                    ? Math.round((lastPrefillPos / prefillMs) * 1000)
+                    : 0;
+                  const closingText = ` ${avgTokSec}t/s | ${chainInfo}*\n\n`;
+                  if (useReasoning) {
+                    const sep = {
+                      id: progressId,
+                      object: 'chat.completion.chunk',
+                      created: progressCreated,
+                      model: modelName ?? tier,
+                      choices: [{
+                        index: 0,
+                        delta: { reasoning_content: closingText },
+                        finish_reason: null,
+                      }],
+                    };
+                    enqueue(encoder.encode(`data: ${JSON.stringify(sep)}\n\n`));
+                  } else {
+                    const sep = {
+                      id: progressId,
+                      object: 'chat.completion.chunk',
+                      created: progressCreated,
+                      model: modelName ?? tier,
+                      choices: [{
+                        index: 0,
+                        delta: { content: closingText },
+                        finish_reason: null,
+                      }],
+                    };
+                    enqueue(encoder.encode(`data: ${JSON.stringify(sep)}\n\n`));
+                  }
                 }
               }
               enqueue(encoder.encode(line + '\n'));
@@ -730,74 +739,78 @@ export function createSSEProxyStream(
               // Log upstream comments (heartbeat, prefill) but don't forward raw
               logInference(`[sse-proxy] tier=${tier} upstream: ${line.slice(0, 100)}`);
 
-              // Convert prefill progress into SSE delta events.
-              // Format: `: prefill 8/291` → emit via reasoning_content or content.
+              // Convert prefill progress into an append-friendly sparkline.
+              // Each tick emits ONE character — the sparkline grows naturally
+              // as SSE content deltas append. No replacement needed.
+              // Result: `*⠿ ▁▃▅▇████▇▅ 450t/s*`
               const prefillMatch = line.match(/^: prefill (\d+)\/(\d+)/);
               if (prefillMatch && !firstDataLogged) {
+                const sparks = '\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588';
                 const pos = parseInt(prefillMatch[1], 10);
                 const total = parseInt(prefillMatch[2], 10);
-                const pct = Math.floor((pos / total) * 100);
-                // Emit at start, every 25%, and 100%
-                if (!emittedProgress || pct >= lastPrefillPct + 25 || pos === total) {
-                  const isFirst = !emittedProgress;
-                  const now = Date.now();
-                  if (isFirst) {
-                    prefillStartMs = now;
-                    lastPrefillMs = now;
-                    lastPrefillPos = 0;
-                  }
-                  // Track tok/s for this segment
-                  const segmentMs = now - lastPrefillMs;
-                  const segmentToks = pos - lastPrefillPos;
-                  if (segmentMs > 0 && segmentToks > 0) {
-                    prefillTokSec.push(Math.round((segmentToks / segmentMs) * 1000));
-                  }
+                const isStart = !emittedProgress;
+                const now = Date.now();
+                if (isStart) {
+                  prefillStartMs = now;
                   lastPrefillMs = now;
-                  lastPrefillPos = pos;
-                  emittedProgress = true;
-                  lastPrefillPct = pct;
+                  lastPrefillPos = 0;
+                }
+                // Compute segment tok/s for this tick's spark height
+                const segmentMs = now - lastPrefillMs;
+                const segmentToks = pos - lastPrefillPos;
+                let sparkChar = sparks[0]; // default lowest
+                if (segmentMs > 0 && segmentToks > 0) {
+                  const tokSec = Math.round((segmentToks / segmentMs) * 1000);
+                  prefillTokSec.push(tokSec);
+                  // Scale spark: 0-500 t/s range mapped to spark index
+                  const idx = Math.min(sparks.length - 1, Math.round((tokSec / 500) * (sparks.length - 1)));
+                  sparkChar = sparks[idx];
+                }
+                lastPrefillMs = now;
+                lastPrefillPos = pos;
+                lastPrefillPct = Math.floor((pos / total) * 100);
+                emittedProgress = true;
 
-                  if (useReasoning) {
-                    const elapsed = now - prefillStartMs;
-                    const avgTokSec = elapsed > 0 ? Math.round((pos / elapsed) * 1000) : 0;
-                    const progressChunk = {
-                      id: progressId,
-                      object: 'chat.completion.chunk',
-                      created: progressCreated,
-                      model: tier,
-                      choices: [{
-                        index: 0,
-                        delta: { reasoning_content: `prefill ${pos}/${total} (${pct}%) ${avgTokSec} tok/s\n` },
-                        finish_reason: null,
-                      }],
-                    };
-                    enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
-                  } else {
-                    // content path (italic markdown, visible in chat)
-                    const filled = Math.round(pct / 10);
-                    const empty = 10 - filled;
-                    const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(empty);
-                    const elapsed = now - prefillStartMs;
-                    const avgTokSec = elapsed > 0 ? Math.round((pos / elapsed) * 1000) : 0;
-                    const stats = isFirst ? '' : ` ${avgTokSec}t/s`;
-                    const label = isFirst
-                      ? `*Prefill ${bar} ${pct}%`
-                      : ` ${bar} ${pct}%${stats}`;
-                    const progressChunk = {
-                      id: progressId,
-                      object: 'chat.completion.chunk',
-                      created: progressCreated,
-                      model: tier,
-                      choices: [{
-                        index: 0,
-                        delta: isFirst
-                          ? { role: 'assistant', content: label }
-                          : { content: label },
-                        finish_reason: null,
-                      }],
-                    };
-                    enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
-                  }
+                // Build the delta content for this tick
+                let tickContent: string;
+                if (isStart) {
+                  // Open italic, braille spinner, first spark
+                  tickContent = `*\u28FF ` + sparkChar;
+                } else {
+                  // Just append one more spark character
+                  tickContent = sparkChar;
+                }
+
+                const tickDelta = isStart
+                  ? { role: 'assistant' as const, content: tickContent }
+                  : { content: tickContent };
+
+                if (useReasoning) {
+                  const progressChunk = {
+                    id: progressId,
+                    object: 'chat.completion.chunk',
+                    created: progressCreated,
+                    model: modelName ?? tier,
+                    choices: [{
+                      index: 0,
+                      delta: { reasoning_content: tickContent },
+                      finish_reason: null,
+                    }],
+                  };
+                  enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
+                } else {
+                  const progressChunk = {
+                    id: progressId,
+                    object: 'chat.completion.chunk',
+                    created: progressCreated,
+                    model: modelName ?? tier,
+                    choices: [{
+                      index: 0,
+                      delta: tickDelta,
+                      finish_reason: null,
+                    }],
+                  };
+                  enqueue(encoder.encode(`data: ${JSON.stringify(progressChunk)}\n\n`));
                 }
               }
             }
@@ -826,7 +839,7 @@ export function createSSEProxyStream(
             id: progressId,
             object: 'chat.completion.chunk',
             created: progressCreated,
-            model: tier,
+            model: modelName ?? tier,
             choices: [{
               index: 0,
               delta: { reasoning_content: `\n---\ntier: ${tier} | ${dataEventCount} tokens | ${elapsed}ms | ${totalBytes}B\n` },
