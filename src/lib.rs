@@ -24,6 +24,7 @@ impl zed::Extension for ZedgeExtension {
             "zedge-logs" => slash_commands::run_logs(),
             "zedge-clear" => slash_commands::run_clear(),
             "zedge-restart" => slash_commands::run_restart(),
+            "zedge-admin" => slash_commands::run_admin(&_args),
             "zedge-feedback" => slash_commands::run_feedback(),
             _ => Err(format!("Unknown command: {}", command.name)),
         }
@@ -43,6 +44,32 @@ impl zed::Extension for ZedgeExtension {
                     run_command: true,
                 })
                 .collect()),
+            "zedge-admin" => {
+                let commands = vec![
+                    ("doctor", "Runtime and MCP health diagnostics"),
+                    ("ops status", "Operator health snapshot"),
+                    ("ops logs", "Monitor and log scripts"),
+                    ("ops costs", "Cost and spend summary"),
+                    ("ops services", "Service inventory"),
+                    ("ops cloudrun status", "Cloud Run status"),
+                    ("ops cloudrun logs", "Cloud Run logs"),
+                    ("ops edge health", "Edge health check"),
+                    ("fleet status", "Fleet status snapshot"),
+                    ("fleet health", "Fleet health checks"),
+                    ("fleet sessions", "Fleet session capacity"),
+                    ("fleet logs", "Tail fleet logs"),
+                    ("mcp list", "MCP catalog entries"),
+                    ("mcp doctor", "MCP catalog health"),
+                    ("ai diagnose", "AI diagnostics"),
+                    ("ai runbook", "Curated runbook sequences"),
+                    ("workflow list", "Available workflows"),
+                ];
+                Ok(commands.into_iter().map(|(cmd, desc)| SlashCommandArgumentCompletion {
+                    label: format!("{cmd} — {desc}"),
+                    new_text: cmd.to_string(),
+                    run_command: true,
+                }).collect())
+            }
             _ => Ok(Vec::new()),
         }
     }

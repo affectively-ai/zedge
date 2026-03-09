@@ -249,6 +249,70 @@ pub fn run_restart() -> Result<SlashCommandOutput, String> {
     }
 }
 
+/// /zedge-admin — run aeon-cli admin commands
+pub fn run_admin(args: &[String]) -> Result<SlashCommandOutput, String> {
+    // No args = show available commands
+    if args.is_empty() {
+        match companion_get("/admin/commands") {
+            Ok(cmds_json) => {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&cmds_json) {
+                    let mut parts: Vec<String> = Vec::new();
+                    parts.push("## Aeon Admin Commands\n".to_string());
+                    parts.push("Usage: `/zedge-admin <command>`\n".to_string());
+                    parts.push("| Command | Description | Risk |".to_string());
+                    parts.push("|:---|:---|:---|".to_string());
+                    if let Some(commands) = v["commands"].as_array() {
+                        for cmd in commands {
+                            let name = cmd["name"].as_str().unwrap_or("?");
+                            let desc = cmd["description"].as_str().unwrap_or("");
+                            let risk = cmd["risk"].as_str().unwrap_or("read");
+                            parts.push(format!("| `{name}` | {desc} | {risk} |"));
+                        }
+                    }
+                    let text = parts.join("\n");
+                    Ok(output_with_section(text, "Aeon Admin"))
+                } else {
+                    Ok(output_with_section(format!("```\n{cmds_json}\n```"), "Aeon Admin"))
+                }
+            }
+            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Aeon Admin")),
+        }
+    } else {
+        // Execute the command
+        let aeon_cmd = format!("aeon {}", args.join(" "));
+        let body = serde_json::json!({ "command": aeon_cmd });
+        let url = format!("{}/admin/exec", provider::COMPANION_URL);
+
+        match HttpRequest::builder()
+            .method(HttpMethod::Post)
+            .url(&url)
+            .header("Content-Type", "application/json")
+            .body(body.to_string().into_bytes())
+            .redirect_policy(RedirectPolicy::FollowAll)
+            .build()
+            .and_then(|req| req.fetch().map_err(|e| format!("{e}")))
+        {
+            Ok(response) => {
+                let response_text = String::from_utf8(response.body)
+                    .unwrap_or_else(|_| "Invalid UTF-8".to_string());
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&response_text) {
+                    let exit_code = v["exitCode"].as_i64().unwrap_or(-1);
+                    let output = v["output"].as_str().unwrap_or("");
+                    let cmd = v["command"].as_str().unwrap_or(&aeon_cmd);
+                    let status = if exit_code == 0 { "ok" } else { "error" };
+                    let text = format!(
+                        "## `{cmd}` [{status}]\n\n```\n{output}\n```"
+                    );
+                    Ok(output_with_section(text, &format!("aeon {}", args[0])))
+                } else {
+                    Ok(output_with_section(format!("```\n{response_text}\n```"), "Aeon Admin"))
+                }
+            }
+            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Aeon Admin")),
+        }
+    }
+}
+
 /// /zedge-feedback — RLHF quality feedback
 pub fn run_feedback() -> Result<SlashCommandOutput, String> {
     let text = "Feedback noted. Quality ratings help improve model routing.\n\nTo submit detailed feedback, POST to `http://localhost:7331/feedback` with:\n```json\n{\"model\": \"tinyllama-1.1b\", \"rating\": 4, \"comment\": \"Good response\"}\n```".to_string();

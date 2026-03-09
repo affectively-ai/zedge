@@ -334,6 +334,59 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse({ status: 'restarting' });
   }
 
+  // ==================== Admin (aeon-cli proxy) ====================
+
+  if (path === '/admin/commands' && req.method === 'GET') {
+    return jsonResponse({
+      commands: [
+        { name: 'doctor', description: 'Runtime, scripts, and MCP health diagnostics', risk: 'read' },
+        { name: 'ops status', description: 'Operator health snapshot', risk: 'read' },
+        { name: 'ops logs', description: 'Monitor and log scripts', risk: 'read' },
+        { name: 'ops costs', description: 'Cost and spend surface summary', risk: 'read' },
+        { name: 'ops services', description: 'Service inventory', risk: 'read' },
+        { name: 'ops cloudrun status', description: 'Cloud Run service status', risk: 'read' },
+        { name: 'ops cloudrun logs', description: 'Cloud Run service logs', risk: 'read' },
+        { name: 'ops edge health', description: 'Edge health check', risk: 'read' },
+        { name: 'fleet status', description: 'Fleet status snapshot', risk: 'read' },
+        { name: 'fleet health', description: 'Fleet health checks', risk: 'read' },
+        { name: 'fleet sessions', description: 'Fleet session capacity and usage', risk: 'read' },
+        { name: 'fleet logs', description: 'Tail fleet logs', risk: 'read' },
+        { name: 'mcp list', description: 'List MCP catalog entries', risk: 'read' },
+        { name: 'mcp doctor', description: 'Inspect MCP catalog health', risk: 'read' },
+        { name: 'ai diagnose', description: 'Scripts, targets, and MCP context diagnostics', risk: 'read' },
+        { name: 'ai runbook', description: 'Curated runbook command sequences', risk: 'read' },
+        { name: 'workflow list', description: 'List available workflows', risk: 'read' },
+      ],
+    });
+  }
+
+  if (path === '/admin/exec' && req.method === 'POST') {
+    const body = (await req.json()) as { command?: string };
+    if (!body.command) return jsonResponse({ error: 'command is required' }, 400);
+
+    // Only allow aeon CLI commands
+    const cmd = body.command.trim();
+    if (!cmd.startsWith('aeon ')) {
+      return jsonResponse({ error: 'Only aeon CLI commands are allowed' }, 403);
+    }
+
+    try {
+      const proc = Bun.spawn(['bash', '-c', `bunx ${cmd} --json 2>&1`], {
+        cwd: process.env.AEON_ROOT || process.cwd(),
+        timeout: 30_000,
+      });
+      const output = await new Response(proc.stdout).text();
+      const exitCode = await proc.exited;
+      return jsonResponse({ command: cmd, exitCode, output });
+    } catch (err) {
+      return jsonResponse({
+        command: cmd,
+        exitCode: 1,
+        output: err instanceof Error ? err.message : 'exec failed',
+      }, 500);
+    }
+  }
+
   // ==================== OpenAI-Compatible API ====================
 
   // Chat completions
