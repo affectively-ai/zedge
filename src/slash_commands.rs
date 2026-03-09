@@ -378,6 +378,257 @@ pub fn run_admin(args: &[String]) -> Result<SlashCommandOutput, String> {
     }
 }
 
+/// /zedge-mesh — P2P inference mesh control
+pub fn run_mesh(args: &[String]) -> Result<SlashCommandOutput, String> {
+    let sub = args.first().map(|s| s.as_str()).unwrap_or("status");
+    match sub {
+        "start" => match companion_post("/mesh/start") {
+            Ok(body) => Ok(output_with_section(format!("Mesh started.\n\n```json\n{body}\n```"), "Mesh Start")),
+            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Mesh Start")),
+        },
+        "stop" => match companion_post("/mesh/stop") {
+            Ok(body) => Ok(output_with_section(format!("Mesh stopped.\n\n```json\n{body}\n```"), "Mesh Stop")),
+            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Mesh Stop")),
+        },
+        _ => match companion_get("/mesh/status") {
+            Ok(body) => {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+                    let running = v["running"].as_bool().unwrap_or(false);
+                    let peers = v["peers"].as_array().map(|a| a.len()).unwrap_or(0);
+                    let node_id = v["nodeId"].as_str().unwrap_or("none");
+                    let mut parts = vec![
+                        "## P2P Inference Mesh\n".to_string(),
+                        format!("**Status**: {}", if running { "running" } else { "stopped" }),
+                        format!("**Node ID**: `{node_id}`"),
+                        format!("**Peers**: {peers}"),
+                    ];
+                    if !running {
+                        parts.push("\nStart with: `/zedge-mesh start`".to_string());
+                    }
+                    Ok(output_with_section(parts.join("\n"), "Mesh"))
+                } else {
+                    Ok(output_with_section(format!("```json\n{body}\n```"), "Mesh"))
+                }
+            }
+            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Mesh")),
+        },
+    }
+}
+
+/// /zedge-crdt — Ghostwriter CRDT collaboration
+pub fn run_crdt(args: &[String]) -> Result<SlashCommandOutput, String> {
+    let sub = args.first().map(|s| s.as_str()).unwrap_or("status");
+    match sub {
+        "files" => match companion_get("/crdt/files") {
+            Ok(body) => Ok(output_with_section(format!("## Open CRDT Files\n\n```json\n{body}\n```"), "CRDT Files")),
+            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "CRDT Files")),
+        },
+        "cursors" => match companion_get("/crdt/cursors") {
+            Ok(body) => Ok(output_with_section(format!("## Active Cursors\n\n```json\n{body}\n```"), "CRDT Cursors")),
+            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "CRDT Cursors")),
+        },
+        "participants" => match companion_get("/crdt/participants") {
+            Ok(body) => Ok(output_with_section(format!("## Participants\n\n```json\n{body}\n```"), "CRDT Participants")),
+            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "CRDT Participants")),
+        },
+        "ledger" => match companion_get("/crdt/ledger") {
+            Ok(body) => Ok(output_with_section(format!("## Contribution Ledger\n\n```json\n{body}\n```"), "CRDT Ledger")),
+            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "CRDT Ledger")),
+        },
+        "diagnostics" => match companion_get("/crdt/diagnostics") {
+            Ok(body) => Ok(output_with_section(format!("## CRDT Diagnostics\n\n```json\n{body}\n```"), "CRDT Diagnostics")),
+            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "CRDT Diagnostics")),
+        },
+        _ => match companion_get("/crdt/status") {
+            Ok(body) => {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+                    let peers = v["peerCount"].as_u64().unwrap_or(0);
+                    let files: Vec<&str> = v["openFiles"].as_array()
+                        .map(|a| a.iter().filter_map(|f| f.as_str()).collect())
+                        .unwrap_or_default();
+                    let mut parts = vec![
+                        "## Ghostwriter CRDT\n".to_string(),
+                        format!("**Peers**: {peers}"),
+                        format!("**Open files**: {}", if files.is_empty() { "none".to_string() } else { files.join(", ") }),
+                    ];
+                    parts.push("\n**Subcommands**: `files`, `cursors`, `participants`, `ledger`, `diagnostics`".to_string());
+                    Ok(output_with_section(parts.join("\n"), "CRDT"))
+                } else {
+                    Ok(output_with_section(format!("```json\n{body}\n```"), "CRDT"))
+                }
+            }
+            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "CRDT")),
+        },
+    }
+}
+
+/// /zedge-forge — ForgeCD deployment
+pub fn run_forge(args: &[String]) -> Result<SlashCommandOutput, String> {
+    let sub = args.first().map(|s| s.as_str()).unwrap_or("status");
+    match sub {
+        "projects" => match companion_get("/forge/projects") {
+            Ok(body) => {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+                    let mut parts = vec!["## Forge Projects\n".to_string()];
+                    if let Some(projects) = v["projects"].as_array() {
+                        parts.push("| Name | Kind | Status |".to_string());
+                        parts.push("|:---|:---|:---|".to_string());
+                        for p in projects {
+                            let name = p["name"].as_str().unwrap_or("?");
+                            let kind = p["kind"].as_str().unwrap_or("?");
+                            let status = p["status"].as_str().unwrap_or("?");
+                            parts.push(format!("| `{name}` | {kind} | {status} |"));
+                        }
+                    }
+                    Ok(output_with_section(parts.join("\n"), "Forge Projects"))
+                } else {
+                    Ok(output_with_section(format!("```json\n{body}\n```"), "Forge Projects"))
+                }
+            }
+            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Forge Projects")),
+        },
+        "deploy" => {
+            // Need a project name as second arg
+            let project = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            if project.is_empty() {
+                return Ok(output_with_section(
+                    "Usage: `/zedge-forge deploy <project-name>`\n\nList projects: `/zedge-forge projects`".to_string(),
+                    "Forge Deploy",
+                ));
+            }
+            let body = serde_json::json!({ "project": project });
+            let url = format!("{}/forge/deploy", provider::COMPANION_URL);
+            match HttpRequest::builder()
+                .method(HttpMethod::Post)
+                .url(&url)
+                .header("Content-Type", "application/json")
+                .body(body.to_string().into_bytes())
+                .redirect_policy(RedirectPolicy::FollowAll)
+                .build()
+                .and_then(|req| req.fetch().map_err(|e| format!("{e}")))
+            {
+                Ok(response) => {
+                    let text = String::from_utf8(response.body).unwrap_or_default();
+                    Ok(output_with_section(format!("## Deploying `{project}`\n\n```json\n{text}\n```"), "Forge Deploy"))
+                }
+                Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Forge Deploy")),
+            }
+        },
+        _ => match companion_get("/forge/status") {
+            Ok(body) => {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+                    let mut parts = vec!["## ForgeCD Status\n".to_string()];
+                    parts.push(format!("```json\n{}\n```", serde_json::to_string_pretty(&v).unwrap_or(body.clone())));
+                    parts.push("\n**Subcommands**: `projects`, `deploy <name>`".to_string());
+                    Ok(output_with_section(parts.join("\n"), "Forge"))
+                } else {
+                    Ok(output_with_section(format!("```json\n{body}\n```"), "Forge"))
+                }
+            }
+            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Forge")),
+        },
+    }
+}
+
+/// /zedge-kernel — Kernel daemon management
+pub fn run_kernel(args: &[String]) -> Result<SlashCommandOutput, String> {
+    let sub = args.first().map(|s| s.as_str()).unwrap_or("status");
+    match sub {
+        "daemons" => match companion_get("/kernel/daemons") {
+            Ok(body) => Ok(output_with_section(format!("## Kernel Daemons\n\n```json\n{body}\n```"), "Kernel Daemons")),
+            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Kernel Daemons")),
+        },
+        "plugins" => match companion_get("/kernel/plugins") {
+            Ok(body) => Ok(output_with_section(format!("## Kernel Plugins\n\n```json\n{body}\n```"), "Kernel Plugins")),
+            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Kernel Plugins")),
+        },
+        "commands" => match companion_get("/kernel/commands") {
+            Ok(body) => Ok(output_with_section(format!("## Kernel Commands\n\n```json\n{body}\n```"), "Kernel Commands")),
+            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Kernel Commands")),
+        },
+        "flight-log" => match companion_get("/kernel/flight-log") {
+            Ok(body) => Ok(output_with_section(format!("## Flight Log\n\n```json\n{body}\n```"), "Flight Log")),
+            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Flight Log")),
+        },
+        _ => {
+            // Default: show daemons + plugins as combined status
+            let daemons = companion_get("/kernel/daemons").unwrap_or_else(|_| "[]".to_string());
+            let plugins = companion_get("/kernel/plugins").unwrap_or_else(|_| "[]".to_string());
+            let mut parts = vec!["## Kernel Status\n".to_string()];
+            parts.push(format!("### Daemons\n```json\n{daemons}\n```"));
+            parts.push(format!("\n### Plugins\n```json\n{plugins}\n```"));
+            parts.push("\n**Subcommands**: `daemons`, `plugins`, `commands`, `flight-log`".to_string());
+            Ok(output_with_section(parts.join("\n"), "Kernel"))
+        }
+    }
+}
+
+/// /zedge-scaffold — create new projects from templates
+pub fn run_scaffold(args: &[String]) -> Result<SlashCommandOutput, String> {
+    if args.is_empty() {
+        // List available templates
+        match companion_get("/scaffold/templates") {
+            Ok(body) => {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+                    let mut parts = vec![
+                        "## Project Templates\n".to_string(),
+                        "Usage: `/zedge-scaffold <template> <project-name>`\n".to_string(),
+                        "| Template | Description |".to_string(),
+                        "|:---|:---|".to_string(),
+                    ];
+                    if let Some(templates) = v["templates"].as_array() {
+                        for t in templates {
+                            let name = t["name"].as_str().unwrap_or("?");
+                            let desc = t["description"].as_str().unwrap_or("");
+                            parts.push(format!("| `{name}` | {desc} |"));
+                        }
+                    }
+                    Ok(output_with_section(parts.join("\n"), "Scaffold"))
+                } else {
+                    Ok(output_with_section(format!("```\n{body}\n```"), "Scaffold"))
+                }
+            }
+            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Scaffold")),
+        }
+    } else {
+        let template = &args[0];
+        let name = args.get(1).map(|s| s.as_str()).unwrap_or("");
+        if name.is_empty() {
+            return Ok(output_with_section(
+                format!("Usage: `/zedge-scaffold {template} <project-name>`"),
+                "Scaffold",
+            ));
+        }
+        let body = serde_json::json!({ "template": template, "name": name });
+        let url = format!("{}/scaffold/create", provider::COMPANION_URL);
+        match HttpRequest::builder()
+            .method(HttpMethod::Post)
+            .url(&url)
+            .header("Content-Type", "application/json")
+            .body(body.to_string().into_bytes())
+            .redirect_policy(RedirectPolicy::FollowAll)
+            .build()
+            .and_then(|req| req.fetch().map_err(|e| format!("{e}")))
+        {
+            Ok(response) => {
+                let text = String::from_utf8(response.body).unwrap_or_default();
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                    let exit_code = v["exitCode"].as_i64().unwrap_or(-1);
+                    let output = v["output"].as_str().unwrap_or("");
+                    let status = if exit_code == 0 { "ok" } else { "error" };
+                    Ok(output_with_section(
+                        format!("## Scaffold `{template}` → `{name}` [{status}]\n\n```\n{output}\n```"),
+                        &format!("Scaffold {template}"),
+                    ))
+                } else {
+                    Ok(output_with_section(format!("```\n{text}\n```"), "Scaffold"))
+                }
+            }
+            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Scaffold")),
+        }
+    }
+}
+
 /// /zedge-feedback — RLHF quality feedback
 pub fn run_feedback() -> Result<SlashCommandOutput, String> {
     let text = "Feedback noted. Quality ratings help improve model routing.\n\nTo submit detailed feedback, POST to `http://localhost:7331/feedback` with:\n```json\n{\"model\": \"tinyllama-1.1b\", \"rating\": 4, \"comment\": \"Good response\"}\n```".to_string();

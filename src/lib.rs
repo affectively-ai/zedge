@@ -26,6 +26,11 @@ impl zed::Extension for ZedgeExtension {
             "zedge-restart" => slash_commands::run_restart(),
             "zedgework" => slash_commands::run_edgework(&_args),
             "zedge-admin" => slash_commands::run_admin(&_args),
+            "zedge-mesh" => slash_commands::run_mesh(&_args),
+            "zedge-crdt" => slash_commands::run_crdt(&_args),
+            "zedge-forge" => slash_commands::run_forge(&_args),
+            "zedge-kernel" => slash_commands::run_kernel(&_args),
+            "zedge-scaffold" => slash_commands::run_scaffold(&_args),
             "zedge-feedback" => slash_commands::run_feedback(),
             _ => Err(format!("Unknown command: {}", command.name)),
         }
@@ -95,6 +100,49 @@ impl zed::Extension for ZedgeExtension {
                     new_text: cmd.to_string(),
                     run_command: true,
                 }).collect())
+            }
+            "zedge-mesh" => {
+                Ok(vec![
+                    SlashCommandArgumentCompletion { label: "status — Show mesh status".into(), new_text: "status".into(), run_command: true },
+                    SlashCommandArgumentCompletion { label: "start — Start P2P mesh".into(), new_text: "start".into(), run_command: true },
+                    SlashCommandArgumentCompletion { label: "stop — Stop P2P mesh".into(), new_text: "stop".into(), run_command: true },
+                ])
+            }
+            "zedge-crdt" => {
+                Ok(vec![
+                    SlashCommandArgumentCompletion { label: "status — CRDT overview".into(), new_text: "status".into(), run_command: true },
+                    SlashCommandArgumentCompletion { label: "files — Open CRDT files".into(), new_text: "files".into(), run_command: true },
+                    SlashCommandArgumentCompletion { label: "cursors — Active cursors".into(), new_text: "cursors".into(), run_command: true },
+                    SlashCommandArgumentCompletion { label: "participants — Connected participants".into(), new_text: "participants".into(), run_command: true },
+                    SlashCommandArgumentCompletion { label: "ledger — Contribution ledger".into(), new_text: "ledger".into(), run_command: true },
+                    SlashCommandArgumentCompletion { label: "diagnostics — CRDT diagnostics".into(), new_text: "diagnostics".into(), run_command: true },
+                ])
+            }
+            "zedge-forge" => {
+                Ok(vec![
+                    SlashCommandArgumentCompletion { label: "status — ForgeCD status".into(), new_text: "status".into(), run_command: true },
+                    SlashCommandArgumentCompletion { label: "projects — List projects".into(), new_text: "projects".into(), run_command: true },
+                    SlashCommandArgumentCompletion { label: "deploy — Deploy a project".into(), new_text: "deploy ".into(), run_command: false },
+                ])
+            }
+            "zedge-scaffold" => {
+                Ok(vec![
+                    SlashCommandArgumentCompletion { label: "site — Aeon Foundation site (SSR, routing, tokens)".into(), new_text: "site ".into(), run_command: false },
+                    SlashCommandArgumentCompletion { label: "app — Full-stack Aeon app (site + API + auth)".into(), new_text: "app ".into(), run_command: false },
+                    SlashCommandArgumentCompletion { label: "worker — Edge worker (CF Workers / Bun)".into(), new_text: "worker ".into(), run_command: false },
+                    SlashCommandArgumentCompletion { label: "mcp — MCP server (Model Context Protocol)".into(), new_text: "mcp ".into(), run_command: false },
+                    SlashCommandArgumentCompletion { label: "agent — AI agent template (tool use + memory)".into(), new_text: "agent ".into(), run_command: false },
+                    SlashCommandArgumentCompletion { label: "extension — Zed editor extension".into(), new_text: "extension ".into(), run_command: false },
+                ])
+            }
+            "zedge-kernel" => {
+                Ok(vec![
+                    SlashCommandArgumentCompletion { label: "status — Daemons and plugins".into(), new_text: "status".into(), run_command: true },
+                    SlashCommandArgumentCompletion { label: "daemons — Running daemons".into(), new_text: "daemons".into(), run_command: true },
+                    SlashCommandArgumentCompletion { label: "plugins — Loaded plugins".into(), new_text: "plugins".into(), run_command: true },
+                    SlashCommandArgumentCompletion { label: "commands — Available commands".into(), new_text: "commands".into(), run_command: true },
+                    SlashCommandArgumentCompletion { label: "flight-log — Event flight log".into(), new_text: "flight-log".into(), run_command: true },
+                ])
             }
             _ => Ok(Vec::new()),
         }

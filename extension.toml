@@ -38,6 +38,26 @@ requires_argument = true
 description = "Run aeon-cli admin commands (ops, fleet, ai, mcp, etc.)"
 requires_argument = true
 
+[slash_commands.zedge-mesh]
+description = "Start, stop, or check P2P inference mesh status"
+requires_argument = true
+
+[slash_commands.zedge-crdt]
+description = "Ghostwriter CRDT collaboration status and file management"
+requires_argument = true
+
+[slash_commands.zedge-forge]
+description = "Forge deployment status and project list"
+requires_argument = true
+
+[slash_commands.zedge-kernel]
+description = "Kernel daemon status, plugins, and flight log"
+requires_argument = true
+
+[slash_commands.zedge-scaffold]
+description = "Create a new project from template (site, app, worker, mcp, agent, extension)"
+requires_argument = true
+
 [slash_commands.zedge-feedback]
 description = "Submit RLHF feedback on response quality"
 requires_argument = false

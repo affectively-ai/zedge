@@ -354,9 +354,47 @@ async function handleRequest(req: Request): Promise<Response> {
         { name: 'pricing', description: 'View pricing' },
         { name: 'keys list', description: 'List API keys' },
         { name: 'workflows --list', description: 'List available AI workflows' },
+        { name: 'workflows', description: 'Install AI workflow templates', args: '[names...]' },
+        { name: 'setup', description: 'Configure MCP server and AI files' },
         { name: 'test', description: 'Test integration' },
       ],
     });
+  }
+
+  if (path === '/scaffold/templates' && req.method === 'GET') {
+    return jsonResponse({
+      templates: [
+        { name: 'site', description: 'Aeon Foundation site (SSR, routing, design tokens)', cmd: 'edgework-node deploy scaffold site' },
+        { name: 'app', description: 'Full-stack Aeon app (site + API + auth)', cmd: 'edgework-node deploy scaffold app' },
+        { name: 'worker', description: 'Edge worker (CF Workers / Bun)', cmd: 'edgework-node deploy scaffold worker' },
+        { name: 'mcp', description: 'MCP server (Model Context Protocol)', cmd: 'edgework-node deploy scaffold mcp' },
+        { name: 'agent', description: 'AI agent template (tool use + memory)', cmd: 'edgework-node deploy scaffold agent' },
+        { name: 'extension', description: 'Zed editor extension', cmd: 'edgework-node deploy scaffold extension' },
+      ],
+    });
+  }
+
+  if (path === '/scaffold/create' && req.method === 'POST') {
+    const body = (await req.json()) as { template?: string; name?: string; targetDir?: string };
+    if (!body.template) return jsonResponse({ error: 'template is required' }, 400);
+    if (!body.name) return jsonResponse({ error: 'name is required' }, 400);
+
+    const targetDir = body.targetDir || body.name;
+    try {
+      const proc = Bun.spawn(
+        ['bash', '-c', `bunx edgework-node deploy scaffold ${body.template} ${targetDir} --preset all --install 2>&1`],
+        { cwd: process.env.AEON_ROOT || process.cwd(), timeout: 60_000 }
+      );
+      const output = await new Response(proc.stdout).text();
+      const exitCode = await proc.exited;
+      return jsonResponse({ template: body.template, name: body.name, targetDir, exitCode, output });
+    } catch (err) {
+      return jsonResponse({
+        template: body.template,
+        exitCode: 1,
+        output: err instanceof Error ? err.message : 'scaffold failed',
+      }, 500);
+    }
   }
 
   if (path === '/edgework/exec' && req.method === 'POST') {
