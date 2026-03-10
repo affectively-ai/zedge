@@ -396,13 +396,13 @@ class LocalInferenceEngine {
             quantized: true,
           })) as unknown as TransformersPipeline;
           this.loadedModelId = modelId;
-          logInference(
-            `[wasm] ${modelId} ready (${Date.now() - t0}ms)`
-          );
+          logInference(`[wasm] ${modelId} ready (${Date.now() - t0}ms)`);
           return true;
         } catch (err) {
           logInference(
-            `[wasm] ${modelId} failed: ${err instanceof Error ? err.message : String(err)}`
+            `[wasm] ${modelId} failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`
           );
         }
       }
@@ -412,7 +412,9 @@ class LocalInferenceEngine {
       return false;
     } catch (err) {
       logInference(
-        `[wasm] transformers.js import failed: ${err instanceof Error ? err.message : String(err)}`
+        `[wasm] transformers.js import failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`
       );
       this.loadFailed = true;
       return false;
@@ -444,8 +446,7 @@ class LocalInferenceEngine {
     });
 
     const generated = Array.isArray(result)
-      ? ((result as Array<{ generated_text?: string }>)[0]?.generated_text ??
-        '')
+      ? (result as Array<{ generated_text?: string }>)[0]?.generated_text ?? ''
       : String(result);
 
     // Strip any trailing ChatML tokens from the output

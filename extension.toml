@@ -3,7 +3,7 @@ name = "Zedge"
 description = "Edge inference coding IDE — AI that runs where you are"
 version = "0.1.0"
 schema_version = 1
-authors = ["Edgework DAO"]
+authors = ["Taylor William Buley"]
 repository = "https://github.com/affectively-ai/zedge"
 
 [slash_commands.zedge-status]

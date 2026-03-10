@@ -1,13 +1,15 @@
 {
   "name": "@affectively/zedge-companion",
-  "version": "0.1.0",
-  "description": "Zedge companion sidecar — inference bridge + compute pool node",
+  "version": "5.0.0",
+  "description": "Zedge companion sidecar \u2014 inference bridge + compute pool node",
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun run --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun --minify"
+    "mcp": "bun run src/mcp-stdio.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun --minify",
+    "build:mcp": "bun build src/mcp-stdio.ts --outdir dist --target bun --minify"
   },
   "dependencies": {
     "yjs": "^13.6.0",

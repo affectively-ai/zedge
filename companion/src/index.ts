@@ -49,10 +49,15 @@ async function verifyKeyTier(): Promise<void> {
     resp.headers.forEach((v, k) => {
       if (k.startsWith('x-')) xHeaders[k] = v;
     });
-    const tier = xHeaders['x-verified-tier'] || xHeaders['x-subscription-tier'] || 'unknown';
+    const tier =
+      xHeaders['x-verified-tier'] ||
+      xHeaders['x-subscription-tier'] ||
+      'unknown';
     const user = xHeaders['x-verified-user'] || 'unknown';
     console.log(
-      `[zedge] Gateway verified: tier=${tier} user=${user} models=${modelCount} status=${resp.status} headers=${JSON.stringify(xHeaders)}`
+      `[zedge] Gateway verified: tier=${tier} user=${user} models=${modelCount} status=${
+        resp.status
+      } headers=${JSON.stringify(xHeaders)}`
     );
   } catch (err) {
     console.warn(`[zedge] Gateway tier probe failed: ${err}`);

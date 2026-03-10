@@ -156,7 +156,7 @@ impl zed::Extension for ZedgeExtension {
         if context_server_id.as_ref() == "zedge-companion" {
             Ok(Command {
                 command: "bun".to_string(),
-                args: vec!["open-source/zedge/companion/src/index.ts".to_string()],
+                args: vec!["open-source/zedge/companion/src/mcp-stdio.ts".to_string()],
                 env: Vec::new(),
             })
         } else {
@@ -171,7 +171,7 @@ impl zed::Extension for ZedgeExtension {
     ) -> Result<Option<ContextServerConfiguration>> {
         if context_server_id.as_ref() == "zedge-companion" {
             Ok(Some(ContextServerConfiguration {
-                installation_instructions: "Install Bun (https://bun.sh) and run:\n\n```\nbun open-source/zedge/companion/src/index.ts\n```\n\nThe companion sidecar provides inference, CRDT collaboration, and workspace context on localhost:7331.".to_string(),
+                installation_instructions: "Install Bun (https://bun.sh) and start the companion sidecar:\n\n```\nbun open-source/zedge/companion/src/index.ts\n```\n\nThe sidecar runs on localhost:7331. The MCP context server bridge connects to it automatically.".to_string(),
                 settings_schema: serde_json::json!({
                     "type": "object",
                     "properties": {

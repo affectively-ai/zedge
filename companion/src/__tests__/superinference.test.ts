@@ -1,7 +1,46 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import type { SuperinferenceResult, CollapseStrategy } from '../superinference';
 
+// Mock fetch to prevent real HTTP requests to Cloud Run coordinators
+const originalFetch = globalThis.fetch;
+
+function mockFetch() {
+  globalThis.fetch = mock(
+    async (_url: string | URL | Request, _init?: RequestInit) => {
+      // Return a fake OpenAI-compatible chat completion response
+      return new Response(
+        JSON.stringify({
+          id: 'mock-completion',
+          object: 'chat.completion',
+          created: Date.now(),
+          model: 'mock-model',
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: 'Mock inference response',
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+  ) as typeof fetch;
+}
+
 describe('Superinference', () => {
+  beforeEach(() => {
+    mockFetch();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   // Import dynamically to avoid module-level side effects
   async function loadModule() {
     return import('../superinference');

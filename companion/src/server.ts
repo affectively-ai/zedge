@@ -160,10 +160,7 @@ function compactSystemPrompts(
   messages: Array<{ role: string; content: string }>
 ): Array<{ role: string; content: string }> {
   return messages.map((msg) => {
-    if (
-      msg.role === 'system' &&
-      msg.content.length > SYSTEM_PROMPT_THRESHOLD
-    ) {
+    if (msg.role === 'system' && msg.content.length > SYSTEM_PROMPT_THRESHOLD) {
       return { role: 'system', content: getEdgeworkPrompt() };
     }
     return msg;
@@ -198,9 +195,7 @@ function deprecatedJsonResponse(data: unknown, status = 200): Response {
  * X-Zedge-Chain: mesh:skipped(2ms);edge:timeout(15003ms);cloudrun:ok(1200ms)
  * X-Zedge-Attempts: JSON array of all attempts for detailed debugging
  */
-function buildAttemptHeaders(
-  attempts: TierAttempt[]
-): Record<string, string> {
+function buildAttemptHeaders(attempts: TierAttempt[]): Record<string, string> {
   const chain = attempts
     .map((a) => {
       const detail = a.detail ? `[${a.detail.slice(0, 60)}]` : '';
@@ -339,12 +334,38 @@ async function handleRequest(req: Request): Promise<Response> {
   if (path === '/edgework/commands' && req.method === 'GET') {
     return jsonResponse({
       commands: [
-        { name: 'emotions', description: 'Analyze emotions in text', args: '[text]' },
-        { name: 'sentiment', description: 'Analyze sentiment in text', args: '[text]' },
-        { name: 'entities', description: 'Extract entities from text', args: '[text]' },
-        { name: 'embed', description: 'Generate embeddings', args: '[text]', options: '--model small|base|large' },
-        { name: 'language', description: 'Detect language of text', args: '[text]' },
-        { name: 'summarize', description: 'Summarize text', args: '[text]', options: '--style concise|detailed|bullets' },
+        {
+          name: 'emotions',
+          description: 'Analyze emotions in text',
+          args: '[text]',
+        },
+        {
+          name: 'sentiment',
+          description: 'Analyze sentiment in text',
+          args: '[text]',
+        },
+        {
+          name: 'entities',
+          description: 'Extract entities from text',
+          args: '[text]',
+        },
+        {
+          name: 'embed',
+          description: 'Generate embeddings',
+          args: '[text]',
+          options: '--model small|base|large',
+        },
+        {
+          name: 'language',
+          description: 'Detect language of text',
+          args: '[text]',
+        },
+        {
+          name: 'summarize',
+          description: 'Summarize text',
+          args: '[text]',
+          options: '--style concise|detailed|bullets',
+        },
         { name: 'health', description: 'Check API health' },
         { name: 'status', description: 'Auth and API status' },
         { name: 'whoami', description: 'Show current identity' },
@@ -353,8 +374,15 @@ async function handleRequest(req: Request): Promise<Response> {
         { name: 'limits', description: 'Rate limits' },
         { name: 'pricing', description: 'View pricing' },
         { name: 'keys list', description: 'List API keys' },
-        { name: 'workflows --list', description: 'List available AI workflows' },
-        { name: 'workflows', description: 'Install AI workflow templates', args: '[names...]' },
+        {
+          name: 'workflows --list',
+          description: 'List available AI workflows',
+        },
+        {
+          name: 'workflows',
+          description: 'Install AI workflow templates',
+          args: '[names...]',
+        },
         { name: 'setup', description: 'Configure MCP server and AI files' },
         { name: 'test', description: 'Test integration' },
       ],
@@ -364,47 +392,93 @@ async function handleRequest(req: Request): Promise<Response> {
   if (path === '/scaffold/templates' && req.method === 'GET') {
     return jsonResponse({
       templates: [
-        { name: 'site', description: 'Aeon Foundation site (SSR, routing, design tokens)', cmd: 'edgework-node deploy scaffold site' },
-        { name: 'app', description: 'Full-stack Aeon app (site + API + auth)', cmd: 'edgework-node deploy scaffold app' },
-        { name: 'worker', description: 'Edge worker (CF Workers / Bun)', cmd: 'edgework-node deploy scaffold worker' },
-        { name: 'mcp', description: 'MCP server (Model Context Protocol)', cmd: 'edgework-node deploy scaffold mcp' },
-        { name: 'agent', description: 'AI agent template (tool use + memory)', cmd: 'edgework-node deploy scaffold agent' },
-        { name: 'extension', description: 'Zed editor extension', cmd: 'edgework-node deploy scaffold extension' },
+        {
+          name: 'site',
+          description: 'Aeon Foundation site (SSR, routing, design tokens)',
+          cmd: 'edgework-node deploy scaffold site',
+        },
+        {
+          name: 'app',
+          description: 'Full-stack Aeon app (site + API + auth)',
+          cmd: 'edgework-node deploy scaffold app',
+        },
+        {
+          name: 'worker',
+          description: 'Edge worker (CF Workers / Bun)',
+          cmd: 'edgework-node deploy scaffold worker',
+        },
+        {
+          name: 'mcp',
+          description: 'MCP server (Model Context Protocol)',
+          cmd: 'edgework-node deploy scaffold mcp',
+        },
+        {
+          name: 'agent',
+          description: 'AI agent template (tool use + memory)',
+          cmd: 'edgework-node deploy scaffold agent',
+        },
+        {
+          name: 'extension',
+          description: 'Zed editor extension',
+          cmd: 'edgework-node deploy scaffold extension',
+        },
       ],
     });
   }
 
   if (path === '/scaffold/create' && req.method === 'POST') {
-    const body = (await req.json()) as { template?: string; name?: string; targetDir?: string };
-    if (!body.template) return jsonResponse({ error: 'template is required' }, 400);
+    const body = (await req.json()) as {
+      template?: string;
+      name?: string;
+      targetDir?: string;
+    };
+    if (!body.template)
+      return jsonResponse({ error: 'template is required' }, 400);
     if (!body.name) return jsonResponse({ error: 'name is required' }, 400);
 
     const targetDir = body.targetDir || body.name;
     try {
       const proc = Bun.spawn(
-        ['bash', '-c', `bunx edgework-node deploy scaffold ${body.template} ${targetDir} --preset all --install 2>&1`],
+        [
+          'bash',
+          '-c',
+          `bunx edgework-node deploy scaffold ${body.template} ${targetDir} --preset all --install 2>&1`,
+        ],
         { cwd: process.env.AEON_ROOT || process.cwd(), timeout: 60_000 }
       );
       const output = await new Response(proc.stdout).text();
       const exitCode = await proc.exited;
-      return jsonResponse({ template: body.template, name: body.name, targetDir, exitCode, output });
-    } catch (err) {
       return jsonResponse({
         template: body.template,
-        exitCode: 1,
-        output: err instanceof Error ? err.message : 'scaffold failed',
-      }, 500);
+        name: body.name,
+        targetDir,
+        exitCode,
+        output,
+      });
+    } catch (err) {
+      return jsonResponse(
+        {
+          template: body.template,
+          exitCode: 1,
+          output: err instanceof Error ? err.message : 'scaffold failed',
+        },
+        500
+      );
     }
   }
 
   if (path === '/edgework/exec' && req.method === 'POST') {
     const body = (await req.json()) as { command?: string };
-    if (!body.command) return jsonResponse({ error: 'command is required' }, 400);
+    if (!body.command)
+      return jsonResponse({ error: 'command is required' }, 400);
 
     const cmd = body.command.trim();
     // Only allow edgework CLI commands
     if (!cmd.startsWith('edgework ')) {
-      return jsonResponse({ error: 'Only edgework CLI commands are allowed' }, 403);
+      return jsonResponse(
+        { error: 'Only edgework CLI commands are allowed' },
+        403
+      );
     }
 
     try {
@@ -416,41 +490,109 @@ async function handleRequest(req: Request): Promise<Response> {
       const exitCode = await proc.exited;
       return jsonResponse({ command: cmd, exitCode, output });
     } catch (err) {
-      return jsonResponse({
-        command: cmd,
-        exitCode: 1,
-        output: err instanceof Error ? err.message : 'exec failed',
-      }, 500);
+      return jsonResponse(
+        {
+          command: cmd,
+          exitCode: 1,
+          output: err instanceof Error ? err.message : 'exec failed',
+        },
+        500
+      );
     }
   }
 
   if (path === '/admin/commands' && req.method === 'GET') {
     return jsonResponse({
       commands: [
-        { name: 'doctor', description: 'Runtime, scripts, and MCP health diagnostics', risk: 'read' },
-        { name: 'ops status', description: 'Operator health snapshot', risk: 'read' },
-        { name: 'ops logs', description: 'Monitor and log scripts', risk: 'read' },
-        { name: 'ops costs', description: 'Cost and spend surface summary', risk: 'read' },
-        { name: 'ops services', description: 'Service inventory', risk: 'read' },
-        { name: 'ops cloudrun status', description: 'Cloud Run service status', risk: 'read' },
-        { name: 'ops cloudrun logs', description: 'Cloud Run service logs', risk: 'read' },
-        { name: 'ops edge health', description: 'Edge health check', risk: 'read' },
-        { name: 'fleet status', description: 'Fleet status snapshot', risk: 'read' },
-        { name: 'fleet health', description: 'Fleet health checks', risk: 'read' },
-        { name: 'fleet sessions', description: 'Fleet session capacity and usage', risk: 'read' },
+        {
+          name: 'doctor',
+          description: 'Runtime, scripts, and MCP health diagnostics',
+          risk: 'read',
+        },
+        {
+          name: 'ops status',
+          description: 'Operator health snapshot',
+          risk: 'read',
+        },
+        {
+          name: 'ops logs',
+          description: 'Monitor and log scripts',
+          risk: 'read',
+        },
+        {
+          name: 'ops costs',
+          description: 'Cost and spend surface summary',
+          risk: 'read',
+        },
+        {
+          name: 'ops services',
+          description: 'Service inventory',
+          risk: 'read',
+        },
+        {
+          name: 'ops cloudrun status',
+          description: 'Cloud Run service status',
+          risk: 'read',
+        },
+        {
+          name: 'ops cloudrun logs',
+          description: 'Cloud Run service logs',
+          risk: 'read',
+        },
+        {
+          name: 'ops edge health',
+          description: 'Edge health check',
+          risk: 'read',
+        },
+        {
+          name: 'fleet status',
+          description: 'Fleet status snapshot',
+          risk: 'read',
+        },
+        {
+          name: 'fleet health',
+          description: 'Fleet health checks',
+          risk: 'read',
+        },
+        {
+          name: 'fleet sessions',
+          description: 'Fleet session capacity and usage',
+          risk: 'read',
+        },
         { name: 'fleet logs', description: 'Tail fleet logs', risk: 'read' },
-        { name: 'mcp list', description: 'List MCP catalog entries', risk: 'read' },
-        { name: 'mcp doctor', description: 'Inspect MCP catalog health', risk: 'read' },
-        { name: 'ai diagnose', description: 'Scripts, targets, and MCP context diagnostics', risk: 'read' },
-        { name: 'ai runbook', description: 'Curated runbook command sequences', risk: 'read' },
-        { name: 'workflow list', description: 'List available workflows', risk: 'read' },
+        {
+          name: 'mcp list',
+          description: 'List MCP catalog entries',
+          risk: 'read',
+        },
+        {
+          name: 'mcp doctor',
+          description: 'Inspect MCP catalog health',
+          risk: 'read',
+        },
+        {
+          name: 'ai diagnose',
+          description: 'Scripts, targets, and MCP context diagnostics',
+          risk: 'read',
+        },
+        {
+          name: 'ai runbook',
+          description: 'Curated runbook command sequences',
+          risk: 'read',
+        },
+        {
+          name: 'workflow list',
+          description: 'List available workflows',
+          risk: 'read',
+        },
       ],
     });
   }
 
   if (path === '/admin/exec' && req.method === 'POST') {
     const body = (await req.json()) as { command?: string };
-    if (!body.command) return jsonResponse({ error: 'command is required' }, 400);
+    if (!body.command)
+      return jsonResponse({ error: 'command is required' }, 400);
 
     // Only allow aeon CLI commands
     const cmd = body.command.trim();
@@ -467,11 +609,14 @@ async function handleRequest(req: Request): Promise<Response> {
       const exitCode = await proc.exited;
       return jsonResponse({ command: cmd, exitCode, output });
     } catch (err) {
-      return jsonResponse({
-        command: cmd,
-        exitCode: 1,
-        output: err instanceof Error ? err.message : 'exec failed',
-      }, 500);
+      return jsonResponse(
+        {
+          command: cmd,
+          exitCode: 1,
+          output: err instanceof Error ? err.message : 'exec failed',
+        },
+        500
+      );
     }
   }
 
@@ -480,7 +625,10 @@ async function handleRequest(req: Request): Promise<Response> {
   // Chat completions
   if (path === '/v1/chat/completions' && req.method === 'POST') {
     const body = (await req.json()) as ChatRequestBody;
-    const rawMessages = (body.messages ?? []) as Array<{ role: string; content: unknown }>;
+    const rawMessages = (body.messages ?? []) as Array<{
+      role: string;
+      content: unknown;
+    }>;
 
     // Zed's OpenAI-compatible provider sends content as an array of
     // content parts: [{type:"text", text:"..."}]. Normalize to plain
@@ -495,7 +643,9 @@ async function handleRequest(req: Request): Promise<Response> {
       }
       return { role: msg.role, content: String(msg.content ?? '') };
     }) as ChatCompletionRequest['messages'];
-    const messages = compactSystemPrompts(normalizedMessages) as ChatCompletionRequest['messages'];
+    const messages = compactSystemPrompts(
+      normalizedMessages
+    ) as ChatCompletionRequest['messages'];
     const request: ChatCompletionRequest = {
       model: body.model ?? getZedgeConfig().preferredModel,
       messages,
@@ -562,9 +712,10 @@ async function handleRequest(req: Request): Promise<Response> {
               choices: [
                 {
                   index: 0,
-                  delta: i === 0
-                    ? { role: 'assistant', content: tokens[i] }
-                    : { content: tokens[i] },
+                  delta:
+                    i === 0
+                      ? { role: 'assistant', content: tokens[i] }
+                      : { content: tokens[i] },
                   finish_reason: null,
                 },
               ],
