@@ -1,12 +1,12 @@
 /**
  * CRDT Encryption Provider
  *
- * Wraps Y.Doc update interception to encrypt/decrypt CRDT updates
+ * Wraps QDoc update interception to encrypt/decrypt CRDT updates
  * before relay transmission. The relay server cannot read code.
  */
 import { createHash } from 'node:crypto';
 import { encryptAes256Gcm, decryptAes256Gcm } from './crypto-utils';
-import * as Y from 'yjs';
+import { QDoc, QMap, QArray, QText } from '@affectively/gnosis';
 
 export interface CrdtEncryptionConfig {
   passphrase: string;
@@ -14,10 +14,10 @@ export interface CrdtEncryptionConfig {
 
 export class CrdtEncryptionProvider {
   private encryptionKey: Uint8Array;
-  private doc: Y.Doc;
+  private doc: QDoc;
   private _onUpdate: ((update: Uint8Array, origin: any) => void) | null = null;
 
-  constructor(doc: Y.Doc, config: CrdtEncryptionConfig) {
+  constructor(doc: QDoc, config: CrdtEncryptionConfig) {
     this.doc = doc;
     // Derive 256-bit key from passphrase via SHA-512 (first 32 bytes)
     const keyMaterial = createHash('sha512').update(config.passphrase).digest();

@@ -2,12 +2,12 @@
  * Ghostwriter CrdtBridge (Zedge 3.0 — Phase 1)
  *
  * Replaces in-memory Maps in collab-bridge, vfs-bridge, and capacitor-bridge
- * with Y.Doc types synced through DashRelay. Every edit, cursor, reading metric,
+ * with QDoc types synced through DashRelay. Every edit, cursor, reading metric,
  * and emotion tag flows through Yjs CRDTs — zero merge conflicts, offline support,
  * automatic convergence.
  *
  * Room naming convention (aeon.kernel namespace):
- *   aeon.kernel.zedge.{workspaceId}.file.{path}  — per-file Y.Doc
+ *   aeon.kernel.zedge.{workspaceId}.file.{path}  — per-file QDoc
  *   aeon.kernel.zedge.{workspaceId}.presence      — workspace-wide cursors
  *   aeon.kernel.zedge.{workspaceId}.capacitor     — shared reading metrics + amygdala tags
  *   aeon.kernel.zedge.{workspaceId}.forge         — deploy state
@@ -15,7 +15,7 @@
  */
 
 import { DashRelay } from '@dashrelay/client';
-import * as Y from 'yjs';
+import { QDoc, QMap, QArray, QText } from '@affectively/gnosis';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,16 +35,16 @@ export interface CrdtBridgeConfig {
 
 export interface CrdtFileHandle {
   path: string;
-  doc: Y.Doc;
-  content: Y.Text;
-  cursors: Y.Map<CrdtCursorEntry>;
-  selections: Y.Map<CrdtSelectionEntry>;
-  diagnostics: Y.Array<CrdtDiagnosticEntry>;
-  annotations: Y.Array<CrdtAnnotation>;
-  meta: Y.Map<unknown>;
-  readingMetrics: Y.Map<CrdtReadingEntry>;
+  doc: QDoc;
+  content: QText;
+  cursors: QMap<CrdtCursorEntry>;
+  selections: QMap<CrdtSelectionEntry>;
+  diagnostics: QArray<CrdtDiagnosticEntry>;
+  annotations: QArray<CrdtAnnotation>;
+  meta: QMap<unknown>;
+  readingMetrics: QMap<CrdtReadingEntry>;
   relay: DashRelay;
-  undoManager: Y.UndoManager;
+  undoManager: any /* TODO: QDoc migration — UndoManager not yet supported */;
 }
 
 export interface CrdtCursorEntry {
@@ -150,11 +150,11 @@ export class CrdtBridge {
   private config: CrdtBridgeConfig;
   private files = new Map<string, CrdtFileHandle>();
   private presenceRelay: DashRelay | null = null;
-  private presenceDoc: Y.Doc | null = null;
+  private presenceDoc: QDoc | null = null;
   private capacitorRelay: DashRelay | null = null;
-  private capacitorDoc: Y.Doc | null = null;
+  private capacitorDoc: QDoc | null = null;
   private poolRelay: DashRelay | null = null;
-  private poolDoc: Y.Doc | null = null;
+  private poolDoc: QDoc | null = null;
   private colorIndex = 0;
   private peerListeners: Array<(event: string, ...args: unknown[]) => void> =
     [];
@@ -172,7 +172,7 @@ export class CrdtBridge {
    */
   async connect(): Promise<void> {
     // Presence room — workspace-wide cursor tracking
-    this.presenceDoc = new Y.Doc();
+    this.presenceDoc = new QDoc();
     this.presenceRelay = this.createRelay('presence');
     await this.presenceRelay.connect(this.presenceDoc);
 
@@ -190,12 +190,12 @@ export class CrdtBridge {
     });
 
     // Capacitor room — shared reading metrics and emotion tags
-    this.capacitorDoc = new Y.Doc();
+    this.capacitorDoc = new QDoc();
     this.capacitorRelay = this.createRelay('capacitor');
     await this.capacitorRelay.connect(this.capacitorDoc);
 
     // Pool room — compute contributions reputation ledger
-    this.poolDoc = new Y.Doc();
+    this.poolDoc = new QDoc();
     this.poolRelay = this.createRelay('pool');
     await this.poolRelay.connect(this.poolDoc);
 
@@ -264,7 +264,7 @@ export class CrdtBridge {
     const existing = this.files.get(path);
     if (existing) return existing;
 
-    const doc = new Y.Doc();
+    const doc = new QDoc();
     const relay = this.createRelay('file.' + path);
     await relay.connect(doc);
 
@@ -282,7 +282,7 @@ export class CrdtBridge {
     }
 
     // UndoManager tracks only our own operations
-    const undoManager = new Y.UndoManager(content, {
+    const undoManager = new any /* TODO: QDoc migration — UndoManager not yet supported */(content, {
       trackedOrigins: new Set([doc.clientID]),
     });
 
@@ -666,10 +666,10 @@ export class CrdtBridge {
   createPeerUndoManager(
     path: string,
     trackedPeerOrigin: number
-  ): Y.UndoManager | null {
+  ): any /* TODO: QDoc migration — UndoManager not yet supported */ | null {
     const handle = this.files.get(path);
     if (!handle) return null;
-    return new Y.UndoManager(handle.content, {
+    return new any /* TODO: QDoc migration — UndoManager not yet supported */(handle.content, {
       trackedOrigins: new Set([trackedPeerOrigin]),
     });
   }
@@ -734,7 +734,7 @@ export class CrdtBridge {
   getSnapshot(path: string): Uint8Array | null {
     const handle = this.files.get(path);
     if (!handle) return null;
-    return Y.encodeStateAsUpdate(handle.doc);
+    return handle.doc.encodeStateAsUpdate();
   }
 
   /**
@@ -743,7 +743,7 @@ export class CrdtBridge {
   getStateVector(path: string): Uint8Array | null {
     const handle = this.files.get(path);
     if (!handle) return null;
-    return Y.encodeStateVector(handle.doc);
+    return handle.doc.encodeStateVector();
   }
 
   // -------------------------------------------------------------------------
