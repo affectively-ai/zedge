@@ -55,8 +55,20 @@ description = "Kernel daemon status, plugins, and flight log"
 requires_argument = true
 
 [slash_commands.zedge-scaffold]
-description = "Create a new project from template (site, app, worker, mcp, agent, extension)"
+description = "Create a new project from template (site, app, worker, mcp, agent, extension, gnosis)"
 requires_argument = true
+
+[slash_commands.zedge-gnosis]
+description = "Analyze Gnosis topological graph and calculate Betti numbers"
+requires_argument = true
+
+[slash_commands.zedge-gnosis-run]
+description = "Run and evaluate the active Gnosis topology file"
+requires_argument = false
+
+[slash_commands.zedge-test]
+description = "Run isolated tests via Gnosis topological pipeline"
+requires_argument = false
 
 [slash_commands.zedge-feedback]
 description = "Submit RLHF feedback on response quality"
@@ -64,3 +76,6 @@ requires_argument = false
 
 [context_servers.zedge-companion]
 
+[language_servers.gnosis-lsp]
+name = "Gnosis Language Server"
+languages = ["Gnosis"]

@@ -31,6 +31,9 @@ impl zed::Extension for ZedgeExtension {
             "zedge-forge" => slash_commands::run_forge(&_args),
             "zedge-kernel" => slash_commands::run_kernel(&_args),
             "zedge-scaffold" => slash_commands::run_scaffold(&_args),
+            "zedge-gnosis" => slash_commands::run_gnosis(&_args),
+            "zedge-gnosis-run" => slash_commands::run_gnosis_run(worktree),
+            "zedge-test" => slash_commands::run_test(worktree),
             "zedge-feedback" => slash_commands::run_feedback(),
             _ => Err(format!("Unknown command: {}", command.name)),
         }
@@ -133,6 +136,7 @@ impl zed::Extension for ZedgeExtension {
                     SlashCommandArgumentCompletion { label: "mcp — MCP server (Model Context Protocol)".into(), new_text: "mcp ".into(), run_command: false },
                     SlashCommandArgumentCompletion { label: "agent — AI agent template (tool use + memory)".into(), new_text: "agent ".into(), run_command: false },
                     SlashCommandArgumentCompletion { label: "extension — Zed editor extension".into(), new_text: "extension ".into(), run_command: false },
+                    SlashCommandArgumentCompletion { label: "gnosis — Gnosis topological graph project".into(), new_text: "gnosis ".into(), run_command: false },
                 ])
             }
             "zedge-kernel" => {
@@ -145,6 +149,22 @@ impl zed::Extension for ZedgeExtension {
                 ])
             }
             _ => Ok(Vec::new()),
+        }
+    }
+
+    fn language_server_command(
+        &mut self,
+        language_server_id: &LanguageServerId,
+        _worktree: &Worktree,
+    ) -> Result<Command> {
+        if language_server_id.as_ref() == "gnosis-lsp" {
+            Ok(Command {
+                command: "bun".to_string(),
+                args: vec!["open-source/zedge/companion/src/gnosis-lsp.ts".to_string()],
+                env: Vec::new(),
+            })
+        } else {
+            Err(format!("Unknown language server: {language_server_id}"))
         }
     }
 

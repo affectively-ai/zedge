@@ -50,6 +50,7 @@ import {
   getCompositionPreset,
   COMPOSITION_PRESETS,
 } from './superinference';
+import { BettyCompiler } from '../../../gnosis/src/betty/compiler';
 import type { VfsBridge } from './vfs-bridge';
 import type { CollabBridge, CollabPresenceUpdate } from './collab-bridge';
 import type { KernelBridge } from './kernel-bridge';
@@ -422,6 +423,11 @@ async function handleRequest(req: Request): Promise<Response> {
           description: 'Zed editor extension',
           cmd: 'edgework-node deploy scaffold extension',
         },
+        {
+          name: 'gnosis',
+          description: 'Gnosis topological graph project',
+          cmd: 'edgework-node deploy scaffold gnosis',
+        },
       ],
     });
   }
@@ -461,6 +467,34 @@ async function handleRequest(req: Request): Promise<Response> {
           template: body.template,
           exitCode: 1,
           output: err instanceof Error ? err.message : 'scaffold failed',
+        },
+        500
+      );
+    }
+  }
+
+  // ==================== Gnosis ====================
+
+  if (path === '/gnosis/eval' && req.method === 'POST') {
+    try {
+      const body = (await req.json()) as { code?: string };
+      if (!body.code) return jsonResponse({ error: 'code is required' }, 400);
+
+      const compiler = new BettyCompiler();
+      const result = compiler.parse(body.code);
+
+      return jsonResponse({
+        output: result.output,
+        b1: result.b1,
+        buleyMeasure: result.buleyMeasure,
+        diagnostics: result.diagnostics,
+        logs: compiler.getLogs(),
+      });
+    } catch (err) {
+      return jsonResponse(
+        {
+          error:
+            err instanceof Error ? err.message : 'Gnosis evaluation failed',
         },
         500
       );

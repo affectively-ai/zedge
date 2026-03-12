@@ -2,8 +2,9 @@
 ///
 /// Uses HttpRequest builder, SlashCommandOutput with labeled sections,
 /// and Worktree for workspace-aware context.
-
-use zed_extension_api::{self as zed, http_client::*, SlashCommandOutput, SlashCommandOutputSection, Worktree};
+use zed_extension_api::{
+    self as zed, http_client::*, SlashCommandOutput, SlashCommandOutputSection, Worktree,
+};
 
 use crate::provider;
 
@@ -82,10 +83,17 @@ pub fn run_status(worktree: Option<&Worktree>) -> Result<SlashCommandOutput, Str
                 parts.push(format!("## Zedge Companion v{version}"));
                 parts.push(format!("**Status**: {status}"));
                 parts.push(format!("**Model**: {model}"));
-                parts.push(format!("**Mesh**: {mesh_peers} peers, {mesh_models} models"));
-                parts.push(format!("**Pool**: {} (tokens: {pool_tokens})",
-                    if pool_joined { "joined" } else { "not joined" }));
-                parts.push(format!("**Ghostwriter CRDT**: {crdt_peers} peers, {} open files", crdt_files.len()));
+                parts.push(format!(
+                    "**Mesh**: {mesh_peers} peers, {mesh_models} models"
+                ));
+                parts.push(format!(
+                    "**Pool**: {} (tokens: {pool_tokens})",
+                    if pool_joined { "joined" } else { "not joined" }
+                ));
+                parts.push(format!(
+                    "**Ghostwriter CRDT**: {crdt_peers} peers, {} open files",
+                    crdt_files.len()
+                ));
                 parts.push(format!("**UCAN DID**: `{ucan_did}`"));
 
                 // Inference tiers
@@ -144,7 +152,10 @@ pub fn run_models() -> Result<SlashCommandOutput, String> {
 
                 parts.push("\n### Model Details\n".to_string());
                 for m in provider::MODELS {
-                    parts.push(format!("- **{}** (`{}`) — max {} tokens", m.display_name, m.id, m.max_tokens));
+                    parts.push(format!(
+                        "- **{}** (`{}`) — max {} tokens",
+                        m.display_name, m.id, m.max_tokens
+                    ));
                 }
             } else {
                 parts.push(format!("```json\n{models_json}\n```"));
@@ -177,14 +188,24 @@ pub fn run_pool() -> Result<SlashCommandOutput, String> {
                 let wasm = v["wasmBridgeAvailable"].as_bool().unwrap_or(false);
 
                 parts.push("## Compute Pool\n".to_string());
-                parts.push(format!("**Status**: {}", if joined { "Joined" } else { "Not joined" }));
+                parts.push(format!(
+                    "**Status**: {}",
+                    if joined { "Joined" } else { "Not joined" }
+                ));
                 parts.push(format!("**Tokens earned**: {tokens}"));
                 parts.push(format!("**Requests served**: {requests}"));
                 parts.push(format!("**Connected nodes**: {nodes}"));
-                parts.push(format!("**WASM bridge**: {}", if wasm { "available" } else { "unavailable" }));
+                parts.push(format!(
+                    "**WASM bridge**: {}",
+                    if wasm { "available" } else { "unavailable" }
+                ));
                 parts.push("\n**Commands**:".to_string());
-                parts.push("- Join: `curl -X POST http://localhost:7331/compute-pool/join`".to_string());
-                parts.push("- Leave: `curl -X POST http://localhost:7331/compute-pool/leave`".to_string());
+                parts.push(
+                    "- Join: `curl -X POST http://localhost:7331/compute-pool/join`".to_string(),
+                );
+                parts.push(
+                    "- Leave: `curl -X POST http://localhost:7331/compute-pool/leave`".to_string(),
+                );
             } else {
                 parts.push(format!("```json\n{pool_json}\n```"));
             }
@@ -233,8 +254,14 @@ pub fn run_logs() -> Result<SlashCommandOutput, String> {
 /// /zedge-clear — clear inference logs
 pub fn run_clear() -> Result<SlashCommandOutput, String> {
     match companion_delete("/logs") {
-        Ok(_) => Ok(output_with_section("Inference logs cleared.".to_string(), "Logs Cleared")),
-        Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Logs Cleared")),
+        Ok(_) => Ok(output_with_section(
+            "Inference logs cleared.".to_string(),
+            "Logs Cleared",
+        )),
+        Err(e) => Ok(output_with_section(
+            format!("**Companion offline**: {e}"),
+            "Logs Cleared",
+        )),
     }
 }
 
@@ -245,7 +272,10 @@ pub fn run_restart() -> Result<SlashCommandOutput, String> {
             "Companion is restarting. It will be back in a few seconds.".to_string(),
             "Companion Restart",
         )),
-        Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Companion Restart")),
+        Err(e) => Ok(output_with_section(
+            format!("**Companion offline**: {e}"),
+            "Companion Restart",
+        )),
     }
 }
 
@@ -276,10 +306,16 @@ pub fn run_edgework(args: &[String]) -> Result<SlashCommandOutput, String> {
                     let text = parts.join("\n");
                     Ok(output_with_section(text, "Edgework"))
                 } else {
-                    Ok(output_with_section(format!("```\n{cmds_json}\n```"), "Edgework"))
+                    Ok(output_with_section(
+                        format!("```\n{cmds_json}\n```"),
+                        "Edgework",
+                    ))
                 }
             }
-            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Edgework")),
+            Err(e) => Ok(output_with_section(
+                format!("**Companion offline**: {e}"),
+                "Edgework",
+            )),
         }
     } else {
         let edgework_cmd = format!("edgework {}", args.join(" "));
@@ -306,10 +342,16 @@ pub fn run_edgework(args: &[String]) -> Result<SlashCommandOutput, String> {
                     let text = format!("## `{cmd}` [{status}]\n\n```\n{output}\n```");
                     Ok(output_with_section(text, &format!("edgework {}", args[0])))
                 } else {
-                    Ok(output_with_section(format!("```\n{response_text}\n```"), "Edgework"))
+                    Ok(output_with_section(
+                        format!("```\n{response_text}\n```"),
+                        "Edgework",
+                    ))
                 }
             }
-            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Edgework")),
+            Err(e) => Ok(output_with_section(
+                format!("**Companion offline**: {e}"),
+                "Edgework",
+            )),
         }
     }
 }
@@ -337,10 +379,16 @@ pub fn run_admin(args: &[String]) -> Result<SlashCommandOutput, String> {
                     let text = parts.join("\n");
                     Ok(output_with_section(text, "Aeon Admin"))
                 } else {
-                    Ok(output_with_section(format!("```\n{cmds_json}\n```"), "Aeon Admin"))
+                    Ok(output_with_section(
+                        format!("```\n{cmds_json}\n```"),
+                        "Aeon Admin",
+                    ))
                 }
             }
-            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Aeon Admin")),
+            Err(e) => Ok(output_with_section(
+                format!("**Companion offline**: {e}"),
+                "Aeon Admin",
+            )),
         }
     } else {
         // Execute the command
@@ -365,15 +413,19 @@ pub fn run_admin(args: &[String]) -> Result<SlashCommandOutput, String> {
                     let output = v["output"].as_str().unwrap_or("");
                     let cmd = v["command"].as_str().unwrap_or(&aeon_cmd);
                     let status = if exit_code == 0 { "ok" } else { "error" };
-                    let text = format!(
-                        "## `{cmd}` [{status}]\n\n```\n{output}\n```"
-                    );
+                    let text = format!("## `{cmd}` [{status}]\n\n```\n{output}\n```");
                     Ok(output_with_section(text, &format!("aeon {}", args[0])))
                 } else {
-                    Ok(output_with_section(format!("```\n{response_text}\n```"), "Aeon Admin"))
+                    Ok(output_with_section(
+                        format!("```\n{response_text}\n```"),
+                        "Aeon Admin",
+                    ))
                 }
             }
-            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Aeon Admin")),
+            Err(e) => Ok(output_with_section(
+                format!("**Companion offline**: {e}"),
+                "Aeon Admin",
+            )),
         }
     }
 }
@@ -383,11 +435,17 @@ pub fn run_mesh(args: &[String]) -> Result<SlashCommandOutput, String> {
     let sub = args.first().map(|s| s.as_str()).unwrap_or("status");
     match sub {
         "start" => match companion_post("/mesh/start") {
-            Ok(body) => Ok(output_with_section(format!("Mesh started.\n\n```json\n{body}\n```"), "Mesh Start")),
+            Ok(body) => Ok(output_with_section(
+                format!("Mesh started.\n\n```json\n{body}\n```"),
+                "Mesh Start",
+            )),
             Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Mesh Start")),
         },
         "stop" => match companion_post("/mesh/stop") {
-            Ok(body) => Ok(output_with_section(format!("Mesh stopped.\n\n```json\n{body}\n```"), "Mesh Stop")),
+            Ok(body) => Ok(output_with_section(
+                format!("Mesh stopped.\n\n```json\n{body}\n```"),
+                "Mesh Stop",
+            )),
             Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Mesh Stop")),
         },
         _ => match companion_get("/mesh/status") {
@@ -398,7 +456,10 @@ pub fn run_mesh(args: &[String]) -> Result<SlashCommandOutput, String> {
                     let node_id = v["nodeId"].as_str().unwrap_or("none");
                     let mut parts = vec![
                         "## P2P Inference Mesh\n".to_string(),
-                        format!("**Status**: {}", if running { "running" } else { "stopped" }),
+                        format!(
+                            "**Status**: {}",
+                            if running { "running" } else { "stopped" }
+                        ),
                         format!("**Node ID**: `{node_id}`"),
                         format!("**Peers**: {peers}"),
                     ];
@@ -410,7 +471,10 @@ pub fn run_mesh(args: &[String]) -> Result<SlashCommandOutput, String> {
                     Ok(output_with_section(format!("```json\n{body}\n```"), "Mesh"))
                 }
             }
-            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Mesh")),
+            Err(e) => Ok(output_with_section(
+                format!("**Companion offline**: {e}"),
+                "Mesh",
+            )),
         },
     }
 }
@@ -420,36 +484,71 @@ pub fn run_crdt(args: &[String]) -> Result<SlashCommandOutput, String> {
     let sub = args.first().map(|s| s.as_str()).unwrap_or("status");
     match sub {
         "files" => match companion_get("/crdt/files") {
-            Ok(body) => Ok(output_with_section(format!("## Open CRDT Files\n\n```json\n{body}\n```"), "CRDT Files")),
+            Ok(body) => Ok(output_with_section(
+                format!("## Open CRDT Files\n\n```json\n{body}\n```"),
+                "CRDT Files",
+            )),
             Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "CRDT Files")),
         },
         "cursors" => match companion_get("/crdt/cursors") {
-            Ok(body) => Ok(output_with_section(format!("## Active Cursors\n\n```json\n{body}\n```"), "CRDT Cursors")),
-            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "CRDT Cursors")),
+            Ok(body) => Ok(output_with_section(
+                format!("## Active Cursors\n\n```json\n{body}\n```"),
+                "CRDT Cursors",
+            )),
+            Err(e) => Ok(output_with_section(
+                format!("**Error**: {e}"),
+                "CRDT Cursors",
+            )),
         },
         "participants" => match companion_get("/crdt/participants") {
-            Ok(body) => Ok(output_with_section(format!("## Participants\n\n```json\n{body}\n```"), "CRDT Participants")),
-            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "CRDT Participants")),
+            Ok(body) => Ok(output_with_section(
+                format!("## Participants\n\n```json\n{body}\n```"),
+                "CRDT Participants",
+            )),
+            Err(e) => Ok(output_with_section(
+                format!("**Error**: {e}"),
+                "CRDT Participants",
+            )),
         },
         "ledger" => match companion_get("/crdt/ledger") {
-            Ok(body) => Ok(output_with_section(format!("## Contribution Ledger\n\n```json\n{body}\n```"), "CRDT Ledger")),
-            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "CRDT Ledger")),
+            Ok(body) => Ok(output_with_section(
+                format!("## Contribution Ledger\n\n```json\n{body}\n```"),
+                "CRDT Ledger",
+            )),
+            Err(e) => Ok(output_with_section(
+                format!("**Error**: {e}"),
+                "CRDT Ledger",
+            )),
         },
         "diagnostics" => match companion_get("/crdt/diagnostics") {
-            Ok(body) => Ok(output_with_section(format!("## CRDT Diagnostics\n\n```json\n{body}\n```"), "CRDT Diagnostics")),
-            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "CRDT Diagnostics")),
+            Ok(body) => Ok(output_with_section(
+                format!("## CRDT Diagnostics\n\n```json\n{body}\n```"),
+                "CRDT Diagnostics",
+            )),
+            Err(e) => Ok(output_with_section(
+                format!("**Error**: {e}"),
+                "CRDT Diagnostics",
+            )),
         },
         _ => match companion_get("/crdt/status") {
             Ok(body) => {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
                     let peers = v["peerCount"].as_u64().unwrap_or(0);
-                    let files: Vec<&str> = v["openFiles"].as_array()
+                    let files: Vec<&str> = v["openFiles"]
+                        .as_array()
                         .map(|a| a.iter().filter_map(|f| f.as_str()).collect())
                         .unwrap_or_default();
                     let mut parts = vec![
                         "## Ghostwriter CRDT\n".to_string(),
                         format!("**Peers**: {peers}"),
-                        format!("**Open files**: {}", if files.is_empty() { "none".to_string() } else { files.join(", ") }),
+                        format!(
+                            "**Open files**: {}",
+                            if files.is_empty() {
+                                "none".to_string()
+                            } else {
+                                files.join(", ")
+                            }
+                        ),
                     ];
                     parts.push("\n**Subcommands**: `files`, `cursors`, `participants`, `ledger`, `diagnostics`".to_string());
                     Ok(output_with_section(parts.join("\n"), "CRDT"))
@@ -457,7 +556,10 @@ pub fn run_crdt(args: &[String]) -> Result<SlashCommandOutput, String> {
                     Ok(output_with_section(format!("```json\n{body}\n```"), "CRDT"))
                 }
             }
-            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "CRDT")),
+            Err(e) => Ok(output_with_section(
+                format!("**Companion offline**: {e}"),
+                "CRDT",
+            )),
         },
     }
 }
@@ -482,10 +584,16 @@ pub fn run_forge(args: &[String]) -> Result<SlashCommandOutput, String> {
                     }
                     Ok(output_with_section(parts.join("\n"), "Forge Projects"))
                 } else {
-                    Ok(output_with_section(format!("```json\n{body}\n```"), "Forge Projects"))
+                    Ok(output_with_section(
+                        format!("```json\n{body}\n```"),
+                        "Forge Projects",
+                    ))
                 }
             }
-            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Forge Projects")),
+            Err(e) => Ok(output_with_section(
+                format!("**Error**: {e}"),
+                "Forge Projects",
+            )),
         },
         "deploy" => {
             // Need a project name as second arg
@@ -509,23 +617,38 @@ pub fn run_forge(args: &[String]) -> Result<SlashCommandOutput, String> {
             {
                 Ok(response) => {
                     let text = String::from_utf8(response.body).unwrap_or_default();
-                    Ok(output_with_section(format!("## Deploying `{project}`\n\n```json\n{text}\n```"), "Forge Deploy"))
+                    Ok(output_with_section(
+                        format!("## Deploying `{project}`\n\n```json\n{text}\n```"),
+                        "Forge Deploy",
+                    ))
                 }
-                Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Forge Deploy")),
+                Err(e) => Ok(output_with_section(
+                    format!("**Error**: {e}"),
+                    "Forge Deploy",
+                )),
             }
-        },
+        }
         _ => match companion_get("/forge/status") {
             Ok(body) => {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
                     let mut parts = vec!["## ForgeCD Status\n".to_string()];
-                    parts.push(format!("```json\n{}\n```", serde_json::to_string_pretty(&v).unwrap_or(body.clone())));
+                    parts.push(format!(
+                        "```json\n{}\n```",
+                        serde_json::to_string_pretty(&v).unwrap_or(body.clone())
+                    ));
                     parts.push("\n**Subcommands**: `projects`, `deploy <name>`".to_string());
                     Ok(output_with_section(parts.join("\n"), "Forge"))
                 } else {
-                    Ok(output_with_section(format!("```json\n{body}\n```"), "Forge"))
+                    Ok(output_with_section(
+                        format!("```json\n{body}\n```"),
+                        "Forge",
+                    ))
                 }
             }
-            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Forge")),
+            Err(e) => Ok(output_with_section(
+                format!("**Companion offline**: {e}"),
+                "Forge",
+            )),
         },
     }
 }
@@ -535,19 +658,40 @@ pub fn run_kernel(args: &[String]) -> Result<SlashCommandOutput, String> {
     let sub = args.first().map(|s| s.as_str()).unwrap_or("status");
     match sub {
         "daemons" => match companion_get("/kernel/daemons") {
-            Ok(body) => Ok(output_with_section(format!("## Kernel Daemons\n\n```json\n{body}\n```"), "Kernel Daemons")),
-            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Kernel Daemons")),
+            Ok(body) => Ok(output_with_section(
+                format!("## Kernel Daemons\n\n```json\n{body}\n```"),
+                "Kernel Daemons",
+            )),
+            Err(e) => Ok(output_with_section(
+                format!("**Error**: {e}"),
+                "Kernel Daemons",
+            )),
         },
         "plugins" => match companion_get("/kernel/plugins") {
-            Ok(body) => Ok(output_with_section(format!("## Kernel Plugins\n\n```json\n{body}\n```"), "Kernel Plugins")),
-            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Kernel Plugins")),
+            Ok(body) => Ok(output_with_section(
+                format!("## Kernel Plugins\n\n```json\n{body}\n```"),
+                "Kernel Plugins",
+            )),
+            Err(e) => Ok(output_with_section(
+                format!("**Error**: {e}"),
+                "Kernel Plugins",
+            )),
         },
         "commands" => match companion_get("/kernel/commands") {
-            Ok(body) => Ok(output_with_section(format!("## Kernel Commands\n\n```json\n{body}\n```"), "Kernel Commands")),
-            Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Kernel Commands")),
+            Ok(body) => Ok(output_with_section(
+                format!("## Kernel Commands\n\n```json\n{body}\n```"),
+                "Kernel Commands",
+            )),
+            Err(e) => Ok(output_with_section(
+                format!("**Error**: {e}"),
+                "Kernel Commands",
+            )),
         },
         "flight-log" => match companion_get("/kernel/flight-log") {
-            Ok(body) => Ok(output_with_section(format!("## Flight Log\n\n```json\n{body}\n```"), "Flight Log")),
+            Ok(body) => Ok(output_with_section(
+                format!("## Flight Log\n\n```json\n{body}\n```"),
+                "Flight Log",
+            )),
             Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Flight Log")),
         },
         _ => {
@@ -557,7 +701,9 @@ pub fn run_kernel(args: &[String]) -> Result<SlashCommandOutput, String> {
             let mut parts = vec!["## Kernel Status\n".to_string()];
             parts.push(format!("### Daemons\n```json\n{daemons}\n```"));
             parts.push(format!("\n### Plugins\n```json\n{plugins}\n```"));
-            parts.push("\n**Subcommands**: `daemons`, `plugins`, `commands`, `flight-log`".to_string());
+            parts.push(
+                "\n**Subcommands**: `daemons`, `plugins`, `commands`, `flight-log`".to_string(),
+            );
             Ok(output_with_section(parts.join("\n"), "Kernel"))
         }
     }
@@ -588,7 +734,10 @@ pub fn run_scaffold(args: &[String]) -> Result<SlashCommandOutput, String> {
                     Ok(output_with_section(format!("```\n{body}\n```"), "Scaffold"))
                 }
             }
-            Err(e) => Ok(output_with_section(format!("**Companion offline**: {e}"), "Scaffold")),
+            Err(e) => Ok(output_with_section(
+                format!("**Companion offline**: {e}"),
+                "Scaffold",
+            )),
         }
     } else {
         let template = &args[0];
@@ -617,7 +766,9 @@ pub fn run_scaffold(args: &[String]) -> Result<SlashCommandOutput, String> {
                     let output = v["output"].as_str().unwrap_or("");
                     let status = if exit_code == 0 { "ok" } else { "error" };
                     Ok(output_with_section(
-                        format!("## Scaffold `{template}` → `{name}` [{status}]\n\n```\n{output}\n```"),
+                        format!(
+                            "## Scaffold `{template}` → `{name}` [{status}]\n\n```\n{output}\n```"
+                        ),
                         &format!("Scaffold {template}"),
                     ))
                 } else {
@@ -626,6 +777,190 @@ pub fn run_scaffold(args: &[String]) -> Result<SlashCommandOutput, String> {
             }
             Err(e) => Ok(output_with_section(format!("**Error**: {e}"), "Scaffold")),
         }
+    }
+}
+
+/// /zedge-gnosis — evaluate Gnosis topological graph
+pub fn run_gnosis(args: &[String]) -> Result<SlashCommandOutput, String> {
+    if args.is_empty() {
+        return Ok(output_with_section(
+            "Usage: `/zedge-gnosis <topological-graph-string>`\nExample: `/zedge-gnosis (input)-[:FORK]->(a|b)`".to_string(),
+            "Gnosis",
+        ));
+    }
+
+    let code = args.join(" ");
+    let body = serde_json::json!({ "code": code });
+    let url = format!("{}/gnosis/eval", provider::COMPANION_URL);
+
+    match HttpRequest::builder()
+        .method(HttpMethod::Post)
+        .url(&url)
+        .header("Content-Type", "application/json")
+        .body(body.to_string().into_bytes())
+        .redirect_policy(RedirectPolicy::FollowAll)
+        .build()
+        .and_then(|req| req.fetch().map_err(|e| format!("{e}")))
+    {
+        Ok(response) => {
+            let response_text =
+                String::from_utf8(response.body).unwrap_or_else(|_| "Invalid UTF-8".to_string());
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&response_text) {
+                let output = v["output"].as_str().unwrap_or("");
+                let b1 = v["b1"].as_u64().unwrap_or(0);
+                let buley = v["buleyMeasure"].as_f64().unwrap_or(0.0);
+                let diagnostics = v["diagnostics"].as_array();
+                let diagnostics_count = diagnostics.map(|items| items.len()).unwrap_or(0);
+                let diagnostics_preview = diagnostics
+                    .map(|items| {
+                        items
+                            .iter()
+                            .take(3)
+                            .filter_map(|item| item["message"].as_str())
+                            .map(|message| format!("- {message}"))
+                            .collect::<Vec<String>>()
+                            .join("\n")
+                    })
+                    .unwrap_or_default();
+
+                let diagnostics_block = if diagnostics_count > 0 {
+                    format!("\n\n**Diagnostics**: {diagnostics_count}\n{diagnostics_preview}")
+                } else {
+                    "\n\n**Diagnostics**: 0".to_string()
+                };
+
+                let text = format!(
+                    "## Gnosis Evaluation\n\n**Betti Number (β₁)**: {b1}\n**Buley Measure**: {buley:.2}{diagnostics_block}\n\n```\n{output}\n```"
+                );
+                Ok(output_with_section(text, "Gnosis"))
+            } else {
+                Ok(output_with_section(
+                    format!("```\n{response_text}\n```"),
+                    "Gnosis",
+                ))
+            }
+        }
+        Err(e) => Ok(output_with_section(
+            format!("**Companion offline**: {e}"),
+            "Gnosis",
+        )),
+    }
+}
+
+/// /zedge-gnosis-run — evaluate current Gnosis file
+pub fn run_gnosis_run(worktree: Option<&Worktree>) -> Result<SlashCommandOutput, String> {
+    let wt = worktree.ok_or("No active workspace")?;
+    // In a real Zed extension we would get the active buffer path.
+    // For now we look for any .gg file in the root as a fallback.
+    let files = wt
+        .read_text_file("main.gg")
+        .or_else(|_| wt.read_text_file("example.gg"))
+        .map_err(|_| "Could not find main.gg or example.gg to run")?;
+
+    let body = serde_json::json!({ "code": files });
+    let url = format!("{}/gnosis/eval", provider::COMPANION_URL);
+
+    match HttpRequest::builder()
+        .method(HttpMethod::Post)
+        .url(&url)
+        .header("Content-Type", "application/json")
+        .body(body.to_string().into_bytes())
+        .redirect_policy(RedirectPolicy::FollowAll)
+        .build()
+        .and_then(|req| req.fetch().map_err(|e| format!("{e}")))
+    {
+        Ok(response) => {
+            let response_text =
+                String::from_utf8(response.body).unwrap_or_else(|_| "Invalid UTF-8".to_string());
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&response_text) {
+                let output = v["output"].as_str().unwrap_or("");
+                let b1 = v["b1"].as_u64().unwrap_or(0);
+                let buley = v["buleyMeasure"].as_f64().unwrap_or(0.0);
+                let diagnostics = v["diagnostics"].as_array();
+                let diagnostics_count = diagnostics.map(|items| items.len()).unwrap_or(0);
+                let diagnostics_preview = diagnostics
+                    .map(|items| {
+                        items
+                            .iter()
+                            .take(3)
+                            .filter_map(|item| item["message"].as_str())
+                            .map(|message| format!("- {message}"))
+                            .collect::<Vec<String>>()
+                            .join("\n")
+                    })
+                    .unwrap_or_default();
+
+                let diagnostics_block = if diagnostics_count > 0 {
+                    format!("\n\n**Diagnostics**: {diagnostics_count}\n{diagnostics_preview}")
+                } else {
+                    "\n\n**Diagnostics**: 0".to_string()
+                };
+
+                let text = format!(
+                    "## Gnosis Run Results\n\n**Betti Number (β₁)**: {b1}\n**Buley Measure**: {buley:.2}{diagnostics_block}\n\n```\n{output}\n```"
+                );
+                Ok(output_with_section(text, "Gnosis Run"))
+            } else {
+                Ok(output_with_section(
+                    format!("```\n{response_text}\n```"),
+                    "Gnosis Run",
+                ))
+            }
+        }
+        Err(e) => Ok(output_with_section(
+            format!("**Companion offline**: {e}"),
+            "Gnosis Run",
+        )),
+    }
+}
+
+/// /zedge-test — run isolated tests via Gnosis
+pub fn run_test(worktree: Option<&Worktree>) -> Result<SlashCommandOutput, String> {
+    let wt = worktree.ok_or("No active workspace")?;
+
+    // Path to the Gnosis isolation runner
+    let runner_path = "open-source/gnosis/isolation-tests.gg";
+    let runner_code = wt
+        .read_text_file(runner_path)
+        .map_err(|_| format!("Could not find Gnosis isolation runner at {}", runner_path))?;
+
+    let body = serde_json::json!({ "code": runner_code });
+    let url = format!("{}/gnosis/eval", provider::COMPANION_URL);
+
+    match HttpRequest::builder()
+        .method(HttpMethod::Post)
+        .url(&url)
+        .header("Content-Type", "application/json")
+        .body(body.to_string().into_bytes())
+        .redirect_policy(RedirectPolicy::FollowAll)
+        .build()
+        .and_then(|req| req.fetch().map_err(|e| format!("{e}")))
+    {
+        Ok(response) => {
+            let response_text =
+                String::from_utf8(response.body).unwrap_or_else(|_| "Invalid UTF-8".to_string());
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&response_text) {
+                let output = v["output"].as_str().unwrap_or("");
+                let b1 = v["b1"].as_u64().unwrap_or(0);
+
+                let status = if b1 == 0 {
+                    "✅ VERIFIED"
+                } else {
+                    "⚠️ TOPOLOGY LEAK"
+                };
+                let text = format!("## Gnosis Isolation Test Run\n\n**Status**: {status}\n**Betti Number (β₁)**: {b1}\n\n```\n{output}\n```");
+                Ok(output_with_section(text, "Zedge Test"))
+            } else {
+                Ok(output_with_section(
+                    format!("```\n{response_text}\n```"),
+                    "Zedge Test",
+                ))
+            }
+        }
+        Err(e) => Ok(output_with_section(
+            format!("**Companion offline**: {e}"),
+            "Zedge Test",
+        )),
     }
 }
 

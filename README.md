@@ -130,7 +130,7 @@ Open the Zed agent panel via the command palette (`Cmd+Shift+P` → "Agent Panel
 
 ## Building the Zed Extension from Source
 
-The extension gives you slash commands (`/zedge-status`, `/zedge-models`, `/zedge-pool`, `/zedge-feedback`) and registers Zedge as a native language model provider.
+The extension gives you slash commands (`/zedge-status`, `/zedge-models`, `/zedge-pool`, `/zedge-gnosis`, `/zedge-gnosis-run`, `/zedge-feedback`) and registers Zedge as a native language model provider.
 
 ### Build
 
@@ -159,6 +159,8 @@ Once the extension is installed, these commands are available in the AI assistan
 | `/zedge-status` | Inference chain health, compute pool stats, token balance |
 | `/zedge-models` | List available models with latency tier and readiness |
 | `/zedge-pool` | Toggle compute pool participation and show earnings |
+| `/zedge-gnosis` | Analyze Gnosis topological graphs and calculate Betti numbers |
+| `/zedge-gnosis-run` | Run and evaluate the current Gnosis topology file |
 | `/zedge-feedback` | Submit RLHF feedback on response quality |
 
 ## Companion Sidecar

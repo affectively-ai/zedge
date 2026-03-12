@@ -1,0 +1,534 @@
+#!/usr/bin/env bun
+/**
+ * Gnosis Language Server (LSP)
+ *
+ * Provides real-time diagnostics and topological analysis for Gnosis (.gg, .ggl) files.
+ * Speaks JSON-RPC over stdin/stdout.
+ */
+
+import { BettyCompiler, type Diagnostic, type GraphAST } from '../../../gnosis/src/betty/compiler';
+
+type JsonRpcId = string | number | null;
+
+interface JsonRpcRequest {
+  jsonrpc: '2.0';
+  id?: JsonRpcId;
+  method: string;
+  params?: unknown;
+}
+
+interface Position {
+  line: number;
+  character: number;
+}
+
+interface Range {
+  start: Position;
+  end: Position;
+}
+
+interface LspDiagnostic {
+  range: Range;
+  severity: 1 | 2 | 3;
+  message: string;
+  source: string;
+}
+
+interface CompletionItem {
+  label: string;
+  kind: number;
+}
+
+const compiler = new BettyCompiler();
+const documents = new Map<string, string>();
+const keywordSet = new Set([
+  'FORK',
+  'RACE',
+  'FOLD',
+  'VENT',
+  'PROCESS',
+  'COLLAPSE',
+  'TUNNEL',
+  'INTERFERE',
+  'MEASURE',
+  'HALT',
+  'EVOLVE',
+  'ENTANGLE',
+  'SUPERPOSE',
+  'OBSERVE',
+]);
+
+let transportBuffer = Buffer.alloc(0);
+let shutdownRequested = false;
+
+function log(message: string): void {
+  console.error(`[gnosis-lsp] ${message}`);
+}
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function getString(
+  object: Record<string, unknown>,
+  key: string
+): string | null {
+  const value = object[key];
+  return typeof value === 'string' ? value : null;
+}
+
+function getPosition(params: unknown): Position | null {
+  const paramsObj = asObject(params);
+  if (!paramsObj) {
+    return null;
+  }
+
+  const position = asObject(paramsObj.position);
+  if (!position) {
+    return null;
+  }
+
+  const line = position.line;
+  const character = position.character;
+  if (typeof line !== 'number' || typeof character !== 'number') {
+    return null;
+  }
+
+  return { line, character };
+}
+
+function getUriFromParams(params: unknown): string | null {
+  const paramsObj = asObject(params);
+  if (!paramsObj) {
+    return null;
+  }
+  const textDocument = asObject(paramsObj.textDocument);
+  if (!textDocument) {
+    return null;
+  }
+  return getString(textDocument, 'uri');
+}
+
+function getDidOpenDocument(
+  params: unknown
+): { uri: string; text: string } | null {
+  const paramsObj = asObject(params);
+  if (!paramsObj) {
+    return null;
+  }
+
+  const textDocument = asObject(paramsObj.textDocument);
+  if (!textDocument) {
+    return null;
+  }
+
+  const uri = getString(textDocument, 'uri');
+  const text = getString(textDocument, 'text');
+  if (!uri || text === null) {
+    return null;
+  }
+
+  return { uri, text };
+}
+
+function getDidChangeDocument(
+  params: unknown
+): { uri: string; text: string } | null {
+  const paramsObj = asObject(params);
+  if (!paramsObj) {
+    return null;
+  }
+
+  const textDocument = asObject(paramsObj.textDocument);
+  const contentChanges = paramsObj.contentChanges;
+  if (!textDocument || !Array.isArray(contentChanges) || contentChanges.length < 1) {
+    return null;
+  }
+
+  const uri = getString(textDocument, 'uri');
+  const firstChange = asObject(contentChanges[0]);
+  const text = firstChange ? getString(firstChange, 'text') : null;
+  if (!uri || text === null) {
+    return null;
+  }
+
+  return { uri, text };
+}
+
+function diagnosticSeverity(value: Diagnostic['severity']): 1 | 2 | 3 {
+  if (value === 'error') return 1;
+  if (value === 'warning') return 2;
+  return 3;
+}
+
+function toLspDiagnostic(diagnostic: Diagnostic, sourceText: string): LspDiagnostic {
+  const lines = sourceText.split('\n');
+  const line = Math.max(0, diagnostic.line - 1);
+  const character = Math.max(0, diagnostic.column - 1);
+  const lineText = lines[line] ?? '';
+  const endCharacter = lineText.length > character ? character + 1 : lineText.length;
+
+  return {
+    range: {
+      start: { line, character },
+      end: { line, character: endCharacter },
+    },
+    severity: diagnosticSeverity(diagnostic.severity),
+    message: diagnostic.message,
+    source: 'gnosis-betty',
+  };
+}
+
+function send(message: unknown): void {
+  const json = JSON.stringify(message);
+  process.stdout.write(
+    `Content-Length: ${Buffer.byteLength(json, 'utf8')}\r\n\r\n${json}`
+  );
+}
+
+function sendResponse(id: JsonRpcId, result: unknown): void {
+  send({
+    jsonrpc: '2.0',
+    id,
+    result,
+  });
+}
+
+function sendError(
+  id: JsonRpcId,
+  code: number,
+  message: string,
+  data?: unknown
+): void {
+  send({
+    jsonrpc: '2.0',
+    id,
+    error: {
+      code,
+      message,
+      data,
+    },
+  });
+}
+
+function publishDiagnostics(uri: string, text: string): void {
+  const parseResult = compiler.parse(text);
+  const diagnostics = parseResult.diagnostics.map((diagnostic) =>
+    toLspDiagnostic(diagnostic, text)
+  );
+
+  send({
+    jsonrpc: '2.0',
+    method: 'textDocument/publishDiagnostics',
+    params: {
+      uri,
+      diagnostics,
+    },
+  });
+}
+
+function tokenAt(lineText: string, character: number): string | null {
+  const tokenRegex = /[A-Za-z_][A-Za-z0-9_]*/g;
+  let match: RegExpExecArray | null = tokenRegex.exec(lineText);
+
+  while (match) {
+    const token = match[0];
+    const start = match.index;
+    const end = start + token.length;
+    if (character >= start && character <= end) {
+      return token;
+    }
+    match = tokenRegex.exec(lineText);
+  }
+
+  return null;
+}
+
+function nodeHoverMarkdown(token: string, ast: GraphAST): string | null {
+  const node = ast.nodes.get(token);
+  if (!node) {
+    return null;
+  }
+
+  const labelText = node.labels.length > 0 ? node.labels.join(', ') : 'none';
+  const propertyEntries = Object.entries(node.properties);
+  const propertiesText =
+    propertyEntries.length > 0
+      ? propertyEntries.map(([key, value]) => `- \`${key}\`: ${value}`).join('\n')
+      : '- none';
+
+  return `### Node \`${token}\`\nLabels: ${labelText}\nProperties:\n${propertiesText}`;
+}
+
+function keywordHoverMarkdown(keyword: string): string | null {
+  const docs: Record<string, string> = {
+    FORK: 'Split execution into parallel branches.',
+    RACE: 'Collapse to the fastest valid branch.',
+    FOLD: 'Merge parallel branches deterministically.',
+    VENT: 'Dissipate non-productive branches.',
+    TUNNEL: 'Route around congestion with controlled flow.',
+    COLLAPSE: 'Resolve superposition into a scalar state.',
+    INTERFERE: 'Apply constructive or destructive path interference.',
+    PROCESS: 'Perform payload transformation on a path.',
+    OBSERVE: 'Read and collapse state at a boundary.',
+  };
+
+  return docs[keyword] ? `### ${keyword}\n${docs[keyword]}` : null;
+}
+
+function buildDocumentSymbols(uri: string, text: string): Array<Record<string, unknown>> {
+  const symbols: Array<Record<string, unknown>> = [];
+  const lines = text.split('\n');
+
+  lines.forEach((lineText, line) => {
+    const nodeRegex = /\(([^:)\s|{}]+)/g;
+    let match: RegExpExecArray | null = nodeRegex.exec(lineText);
+
+    while (match) {
+      const nodeId = match[1];
+      const startCharacter = match.index + 1;
+      const endCharacter = startCharacter + nodeId.length;
+      const range: Range = {
+        start: { line, character: startCharacter },
+        end: { line, character: endCharacter },
+      };
+
+      symbols.push({
+        name: nodeId,
+        kind: 13, // SymbolKind.Variable
+        location: {
+          uri,
+          range,
+        },
+      });
+
+      match = nodeRegex.exec(lineText);
+    }
+  });
+
+  return symbols;
+}
+
+function buildCompletionItems(labels: string[]): CompletionItem[] {
+  return labels.map((label) => ({
+    label,
+    kind: keywordSet.has(label) ? 14 : 6, // 14=Keyword, 6=Variable
+  }));
+}
+
+function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {
+  const object = asObject(value);
+  if (!object) return false;
+  return (
+    object.jsonrpc === '2.0' &&
+    typeof object.method === 'string'
+  );
+}
+
+async function dispatchRequest(req: JsonRpcRequest): Promise<unknown> {
+  switch (req.method) {
+    case 'initialize':
+      return {
+        capabilities: {
+          textDocumentSync: {
+            openClose: true,
+            change: 1, // TextDocumentSyncKind.Full
+          },
+          hoverProvider: true,
+          documentSymbolProvider: true,
+          completionProvider: {
+            triggerCharacters: [':', '(', '['],
+          },
+        },
+        serverInfo: {
+          name: 'gnosis-lsp',
+          version: '1.1.0',
+        },
+      };
+
+    case 'initialized':
+      return null;
+
+    case 'textDocument/didOpen': {
+      const opened = getDidOpenDocument(req.params);
+      if (opened) {
+        documents.set(opened.uri, opened.text);
+        publishDiagnostics(opened.uri, opened.text);
+      }
+      return null;
+    }
+
+    case 'textDocument/didChange': {
+      const changed = getDidChangeDocument(req.params);
+      if (changed) {
+        documents.set(changed.uri, changed.text);
+        publishDiagnostics(changed.uri, changed.text);
+      }
+      return null;
+    }
+
+    case 'textDocument/didClose': {
+      const uri = getUriFromParams(req.params);
+      if (uri) {
+        documents.delete(uri);
+        send({
+          jsonrpc: '2.0',
+          method: 'textDocument/publishDiagnostics',
+          params: {
+            uri,
+            diagnostics: [],
+          },
+        });
+      }
+      return null;
+    }
+
+    case 'textDocument/didSave': {
+      const uri = getUriFromParams(req.params);
+      if (uri) {
+        const text = documents.get(uri);
+        if (text !== undefined) {
+          publishDiagnostics(uri, text);
+        }
+      }
+      return null;
+    }
+
+    case 'textDocument/documentSymbol': {
+      const uri = getUriFromParams(req.params);
+      if (!uri) {
+        return [];
+      }
+
+      const text = documents.get(uri) ?? '';
+      return buildDocumentSymbols(uri, text);
+    }
+
+    case 'textDocument/completion': {
+      const uri = getUriFromParams(req.params);
+      const position = getPosition(req.params);
+      if (!uri || !position) {
+        return { isIncomplete: false, items: [] };
+      }
+
+      const text = documents.get(uri) ?? '';
+      compiler.parse(text);
+      const sourceLine = text.split('\n')[position.line] ?? '';
+      const labels = compiler.getCompletions(sourceLine, position.character);
+
+      return {
+        isIncomplete: false,
+        items: buildCompletionItems(labels),
+      };
+    }
+
+    case 'textDocument/hover': {
+      const uri = getUriFromParams(req.params);
+      const position = getPosition(req.params);
+      if (!uri || !position) {
+        return null;
+      }
+
+      const text = documents.get(uri) ?? '';
+      const sourceLine = text.split('\n')[position.line] ?? '';
+      const token = tokenAt(sourceLine, position.character);
+      if (!token) {
+        return null;
+      }
+
+      const uppercaseToken = token.toUpperCase();
+      const parseResult = compiler.parse(text);
+      const keywordHelp = keywordHoverMarkdown(uppercaseToken);
+      const nodeHelp = parseResult.ast ? nodeHoverMarkdown(token, parseResult.ast) : null;
+      const help = keywordHelp ?? nodeHelp;
+
+      if (!help) {
+        return null;
+      }
+
+      return {
+        contents: {
+          kind: 'markdown',
+          value: help,
+        },
+      };
+    }
+
+    case 'shutdown':
+      shutdownRequested = true;
+      return null;
+
+    case 'exit':
+      process.exit(shutdownRequested ? 0 : 1);
+
+    default:
+      if (req.id !== undefined) {
+        throw new Error(`Method not found: ${req.method}`);
+      }
+      return null;
+  }
+}
+
+async function handleRequest(req: JsonRpcRequest): Promise<void> {
+  try {
+    const result = await dispatchRequest(req);
+    if (req.id !== undefined) {
+      sendResponse(req.id, result);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown LSP error';
+    if (req.id !== undefined) {
+      sendError(req.id, -32601, message);
+    }
+    log(message);
+  }
+}
+
+function processTransportBuffer(): void {
+  while (true) {
+    const headerEnd = transportBuffer.indexOf('\r\n\r\n');
+    if (headerEnd < 0) {
+      return;
+    }
+
+    const header = transportBuffer.subarray(0, headerEnd).toString('utf8');
+    const contentLengthMatch = header.match(/Content-Length:\s*(\d+)/i);
+    if (!contentLengthMatch) {
+      transportBuffer = transportBuffer.subarray(headerEnd + 4);
+      continue;
+    }
+
+    const contentLength = Number.parseInt(contentLengthMatch[1], 10);
+    const totalLength = headerEnd + 4 + contentLength;
+    if (transportBuffer.length < totalLength) {
+      return;
+    }
+
+    const bodyBuffer = transportBuffer.subarray(headerEnd + 4, totalLength);
+    transportBuffer = transportBuffer.subarray(totalLength);
+
+    const bodyText = bodyBuffer.toString('utf8');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(bodyText);
+    } catch {
+      sendError(null, -32700, 'Parse error');
+      continue;
+    }
+
+    if (!isJsonRpcRequest(parsed)) {
+      sendError(null, -32600, 'Invalid Request');
+      continue;
+    }
+
+    void handleRequest(parsed);
+  }
+}
+
+process.stdin.on('data', (chunk: Buffer) => {
+  transportBuffer = Buffer.concat([transportBuffer, chunk]);
+  processTransportBuffer();
+});
